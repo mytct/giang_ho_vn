@@ -35,10 +35,12 @@ void paintText(
     final gp = TextPainter(
       text: TextSpan(
         text: text,
-        style: style.copyWith(shadows: [
-          Shadow(color: glow, blurRadius: glowBlur),
-          Shadow(color: glow, blurRadius: glowBlur * 0.5),
-        ]),
+        style: style.copyWith(
+          shadows: [
+            Shadow(color: glow, blurRadius: glowBlur),
+            Shadow(color: glow, blurRadius: glowBlur * 0.5),
+          ],
+        ),
       ),
       textDirection: TextDirection.ltr,
       maxLines: 1,
@@ -72,8 +74,13 @@ void paintRoundedRect(
   }
 }
 
-void paintGlowCircle(Canvas c, Offset center, double radius, Color color,
-    {double blur = 12}) {
+void paintGlowCircle(
+  Canvas c,
+  Offset center,
+  double radius,
+  Color color, {
+  double blur = 12,
+}) {
   c.drawCircle(
     center,
     radius,

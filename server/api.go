@@ -74,6 +74,58 @@ func registerRoutes(mux *http.ServeMux, st *Store) {
 		writeJSON(w, 200, map[string]any{"token": tok})
 	})
 
+	mux.HandleFunc("POST /api/dev/max", func(w http.ResponseWriter, r *http.Request) {
+		if !devEnabled {
+			fail(w, 404, "dev tools đã tắt")
+			return
+		}
+		var body struct {
+			Token string `json:"token"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state, err := st.MaxAccount(body.Token)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, state)
+	})
+
+	mux.HandleFunc("POST /api/dev/reset-territories", func(w http.ResponseWriter, r *http.Request) {
+		if !devEnabled {
+			fail(w, 404, "dev tools đã tắt")
+			return
+		}
+		var body struct {
+			Token string `json:"token"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state, err := st.ResetTerritories(body.Token)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, state)
+	})
+
+	mux.HandleFunc("POST /api/dev/grant", func(w http.ResponseWriter, r *http.Request) {
+		if !devEnabled {
+			fail(w, 404, "dev tools đã tắt")
+			return
+		}
+		var body struct {
+			Token string `json:"token"`
+			Count int    `json:"count"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state, err := st.GrantTerritories(body.Token, body.Count)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, state)
+	})
+
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]string{"ok": "đang chạy"})
 	})

@@ -6,6 +6,7 @@ import '../controller.dart';
 import '../models.dart';
 import '../scene/alley_game.dart';
 import '../theme.dart';
+import '../widgets/boss_avatar.dart';
 import '../widgets/common.dart';
 import 'event_sheets.dart';
 import 'brawl_screen.dart';
@@ -46,19 +47,15 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, _) {
         final s = c.state;
         if (s == null) {
-          return const Center(
-            child: CircularProgressIndicator(color: GH.pink),
-          );
+          return const Center(child: CircularProgressIndicator(color: GH.pink));
         }
         _scene.setRate(s.rate);
-        _scene.setCrew(s.crew);
         return Column(
           children: [
             _PlayerHeader(state: s, controller: c),
-            if (s.heat > 0)
-              _HeatBar(state: s, controller: c),
+            if (s.heat > 0) _HeatBar(state: s, controller: c),
             SizedBox(
-              height: 200,
+              height: 310,
               width: double.infinity,
               child: ClipRect(child: GameWidget(game: _scene)),
             ),
@@ -115,17 +112,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: labelStyle(size: 10.5),
                     ),
                   ),
-                  for (final b in s.businesses) _BusinessTile(
-                    business: b,
-                    onTap: () {
-                      if (!b.unlocked) {
-                        showToast(context, 'Cần đạt ${b.unlockName} mới mở được',
-                            error: true);
-                        return;
-                      }
-                      _openUpgradeSheet(b);
-                    },
-                  ),
+                  for (final b in s.businesses)
+                    _BusinessTile(
+                      business: b,
+                      onTap: () {
+                        if (!b.unlocked) {
+                          showToast(
+                            context,
+                            'Cần đạt ${b.unlockName} mới mở được',
+                            error: true,
+                          );
+                          return;
+                        }
+                        _openUpgradeSheet(b);
+                      },
+                    ),
                   _PrestigeCard(state: s, controller: c),
                   const _TipCard(),
                 ],
@@ -173,21 +174,29 @@ class _HomeScreenState extends State<HomeScreen> {
                     width: 38,
                     height: 4,
                     decoration: BoxDecoration(
-                        color: GH.line,
-                        borderRadius: BorderRadius.circular(2)),
+                      color: GH.line,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 12, 8, 6),
                     child: Row(
                       children: [
-                        const Text('CỐT TRUYỆN',
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w900)),
+                        const Text(
+                          'CỐT TRUYỆN',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
                         const Spacer(),
                         IconButton(
                           onPressed: () => Navigator.pop(ctx),
-                          icon: const Icon(Icons.close_rounded,
-                              color: GH.muted, size: 20),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: GH.muted,
+                            size: 20,
+                          ),
                         ),
                       ],
                     ),
@@ -222,15 +231,18 @@ class _HomeScreenState extends State<HomeScreen> {
       final s = c.state;
       if (s == null) return;
       nav.pop();
-      await nav.push(MaterialPageRoute<void>(
-        builder: (_) => BrawlScreen(
-          result: result,
-          playerName: s.name,
-          myCount: (s.crew + 1).clamp(1, 5),
-          myWeapon: s.weapon.name,
-          enemyName: ch.bossName,
+      await nav.push(
+        MaterialPageRoute<void>(
+          builder: (_) => BrawlScreen(
+            result: result,
+            playerName: s.name,
+            myCount: (s.crew + 1).clamp(1, 5),
+            myWeapon: s.weapon.name,
+            enemyName: ch.bossName,
+            bossChapter: ch.id,
+          ),
         ),
-      ));
+      );
       if (nav.mounted) {
         showToast(
           nav.context,
@@ -280,17 +292,26 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding: const EdgeInsets.fromLTRB(20, 12, 8, 6),
                     child: Row(
                       children: [
-                        const Text('NHIỆM VỤ',
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w900)),
+                        const Text(
+                          'NHIỆM VỤ',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
                         const SizedBox(width: 8),
-                        Text('$claimed/${s.missions.length} xong',
-                            style: labelStyle(size: 11)),
+                        Text(
+                          '$claimed/${s.missions.length} xong',
+                          style: labelStyle(size: 11),
+                        ),
                         const Spacer(),
                         IconButton(
                           onPressed: () => Navigator.of(ctx).pop(),
-                          icon: const Icon(Icons.close_rounded,
-                              color: GH.muted, size: 20),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            color: GH.muted,
+                            size: 20,
+                          ),
                         ),
                       ],
                     ),
@@ -301,12 +322,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Row(
                           children: [
-                            Text('HÔM NAY',
-                                style:
-                                    labelStyle(size: 10.5, color: GH.cyan)),
+                            Text(
+                              'HÔM NAY',
+                              style: labelStyle(size: 10.5, color: GH.cyan),
+                            ),
                             const Spacer(),
-                            Text('reset 00:00 mỗi ngày',
-                                style: labelStyle(size: 9.5)),
+                            Text(
+                              'reset 00:00 mỗi ngày',
+                              style: labelStyle(size: 9.5),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -320,9 +344,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                         const SizedBox(height: 8),
-                        Text('MỘT LẦN',
-                            style:
-                                labelStyle(size: 10.5, color: GH.pink)),
+                        Text(
+                          'MỘT LẦN',
+                          style: labelStyle(size: 10.5, color: GH.pink),
+                        ),
                         const SizedBox(height: 8),
                         for (final m in s.missions)
                           Padding(
@@ -384,10 +409,13 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (ctx, _) {
           final s = c.state;
           if (s == null) return const SizedBox.shrink();
-          final biz =
-              s.businesses.firstWhere((e) => e.id == b.id, orElse: () => b);
-          final nextRate =
-              biz.level == 0 ? 0.0 : biz.rate / biz.level * (biz.level + 1);
+          final biz = s.businesses.firstWhere(
+            (e) => e.id == b.id,
+            orElse: () => b,
+          );
+          final nextRate = biz.level == 0
+              ? 0.0
+              : biz.rate / biz.level * (biz.level + 1);
           final canBuy = s.money >= biz.upgradeCost && !c.busy;
           return Container(
             decoration: const BoxDecoration(
@@ -422,28 +450,39 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(biz.name,
-                                  style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w800)),
-                              Text('Cấp ${biz.level}',
-                                  style: labelStyle(size: 11.5)),
+                              Text(
+                                biz.name,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                'Cấp ${biz.level}',
+                                style: labelStyle(size: 11.5),
+                              ),
                             ],
                           ),
                         ),
-                        Text('+${formatMoney(biz.rate)}/s',
-                            style: moneyStyle(size: 16, color: GH.cyan)),
+                        Text(
+                          '+${formatMoney(biz.rate)}/s',
+                          style: moneyStyle(size: 16, color: GH.cyan),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 18),
-                    _kv('Thu nhập hiện tại',
-                        '+${formatMoney(biz.rate)}/s'),
-                    _kv('Sau nâng cấp',
-                        '+${formatMoney(nextRate)}/s',
-                        color: GH.green),
+                    _kv('Thu nhập hiện tại', '+${formatMoney(biz.rate)}/s'),
+                    _kv(
+                      'Sau nâng cấp',
+                      '+${formatMoney(nextRate)}/s',
+                      color: GH.green,
+                    ),
                     _kv('Chi phí', '${formatMoney(biz.upgradeCost)} đ'),
-                    _kv('Mày đang có', '${formatMoney(s.money)} đ',
-                        color: GH.gold),
+                    _kv(
+                      'Mày đang có',
+                      '${formatMoney(s.money)} đ',
+                      color: GH.gold,
+                    ),
                     const SizedBox(height: 18),
                     PrimaryButton(
                       label: canBuy
@@ -546,8 +585,10 @@ class _PlayerHeader extends StatelessWidget {
                 constraints: const BoxConstraints(),
                 icon: Badge(
                   isLabelVisible: state.unread > 0,
-                  label: Text('${state.unread}',
-                      style: const TextStyle(fontSize: 9)),
+                  label: Text(
+                    '${state.unread}',
+                    style: const TextStyle(fontSize: 9),
+                  ),
                   backgroundColor: GH.red,
                   child: Icon(
                     Icons.notifications_none_rounded,
@@ -560,8 +601,7 @@ class _PlayerHeader extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(formatMoney(state.money),
-                      style: moneyStyle(size: 21)),
+                  Text(formatMoney(state.money), style: moneyStyle(size: 21)),
                   Text(
                     '+${formatMoney(state.rate)}/s',
                     style: const TextStyle(
@@ -580,11 +620,14 @@ class _PlayerHeader extends StatelessWidget {
             onTap: () => showLevelSheet(context, controller),
             child: Row(
               children: [
-                Text('Lv ${state.level}',
-                    style: const TextStyle(
-                        color: GH.cyan,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900)),
+                Text(
+                  'Lv ${state.level}',
+                  style: const TextStyle(
+                    color: GH.cyan,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: ClipRRect(
@@ -598,13 +641,17 @@ class _PlayerHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text('${state.xp}/${state.xpNext} EXP',
-                    style: labelStyle(size: 9.5)),
+                Text(
+                  '${state.xp}/${state.xpNext} EXP',
+                  style: labelStyle(size: 9.5),
+                ),
                 if (state.points > 0) ...[
                   const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 2),
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: GH.gold.withValues(alpha: 0.16),
                       borderRadius: BorderRadius.circular(5),
@@ -639,13 +686,16 @@ class _PlayerHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: labelStyle(
-                      size: 10.5,
-                      color: next == null ? GH.gold : GH.muted),
+                    size: 10.5,
+                    color: next == null ? GH.gold : GH.muted,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
-              Text('x${state.territoryMul.toStringAsFixed(1)} địa bàn',
-                  style: labelStyle(size: 10.5, color: GH.cyan)),
+              Text(
+                'x${state.territoryMul.toStringAsFixed(1)} địa bàn',
+                style: labelStyle(size: 10.5, color: GH.cyan),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -661,34 +711,38 @@ class _PlayerHeader extends StatelessWidget {
                 Expanded(
                   flex: 3,
                   child: StatChip(
-                      icon: Icons.fitness_center_rounded,
-                      value: '${state.power}',
-                      label: 'lực',
-                      color: GH.pink),
+                    icon: Icons.fitness_center_rounded,
+                    value: '${state.power}',
+                    label: 'lực',
+                    color: GH.pink,
+                  ),
                 ),
                 Expanded(
                   flex: 3,
                   child: StatChip(
-                      icon: Icons.groups_rounded,
-                      value: '${state.crew}',
-                      label: 'quân',
-                      color: GH.cyan),
+                    icon: Icons.groups_rounded,
+                    value: '${state.crew}',
+                    label: 'quân',
+                    color: GH.cyan,
+                  ),
                 ),
                 Expanded(
                   flex: 3,
                   child: StatChip(
-                      icon: Icons.flag_rounded,
-                      value: '${state.ownedCount}',
-                      label: 'ô',
-                      color: GH.gold),
+                    icon: Icons.flag_rounded,
+                    value: '${state.ownedCount}',
+                    label: 'ô',
+                    color: GH.gold,
+                  ),
                 ),
                 Expanded(
                   flex: 4,
                   child: StatChip(
-                      icon: Icons.gavel_rounded,
-                      value: '${state.weapon.dmg}',
-                      label: 'dmg',
-                      color: GH.muted),
+                    icon: Icons.gavel_rounded,
+                    value: '${state.weapon.dmg}',
+                    label: 'dmg',
+                    color: GH.muted,
+                  ),
                 ),
               ],
             ),
@@ -711,8 +765,11 @@ class _TipCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.lightbulb_outline_rounded,
-                size: 16, color: GH.gold),
+            const Icon(
+              Icons.lightbulb_outline_rounded,
+              size: 16,
+              color: GH.gold,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -752,17 +809,22 @@ class _BusinessTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(business.name,
-                          style: const TextStyle(
-                              fontSize: 13.5, fontWeight: FontWeight.w700)),
+                      Text(
+                        business.name,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       const SizedBox(height: 2),
                       Text(
                         locked
                             ? 'Cần đạt ${business.unlockName}'
                             : 'Cấp ${business.level} · +${formatMoney(business.rate)}/s',
                         style: labelStyle(
-                            size: 11,
-                            color: locked ? GH.muted : GH.cyan),
+                          size: 11,
+                          color: locked ? GH.muted : GH.cyan,
+                        ),
                       ),
                     ],
                   ),
@@ -773,8 +835,10 @@ class _BusinessTile extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text('${formatMoney(business.upgradeCost)} đ',
-                          style: moneyStyle(size: 12, color: GH.gold)),
+                      Text(
+                        '${formatMoney(business.upgradeCost)} đ',
+                        style: moneyStyle(size: 12, color: GH.gold),
+                      ),
                       const SizedBox(height: 2),
                       Text('nâng cấp', style: labelStyle(size: 9.5)),
                     ],
@@ -810,7 +874,8 @@ class _BizIcon extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(11),
         border: Border.all(
-            color: locked ? GH.line : GH.pink.withValues(alpha: 0.35)),
+          color: locked ? GH.line : GH.pink.withValues(alpha: 0.35),
+        ),
       ),
       child: Text(
         text,
@@ -831,14 +896,18 @@ Widget _kv(String label, String value, {Color color = GH.text}) {
       children: [
         Text(label, style: labelStyle(size: 12.5)),
         const Spacer(),
-        Text(value,
-            style: TextStyle(
-                color: color, fontSize: 13.5, fontWeight: FontWeight.w800)),
+        Text(
+          value,
+          style: TextStyle(
+            color: color,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ],
     ),
   );
 }
-
 
 class _MissionCard extends StatelessWidget {
   const _MissionCard({required this.state, required this.onTap});
@@ -857,8 +926,7 @@ class _MissionCard extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: NeonPanel(
-          borderColor:
-              ready > 0 ? GH.gold.withValues(alpha: 0.6) : GH.line,
+          borderColor: ready > 0 ? GH.gold.withValues(alpha: 0.6) : GH.line,
           child: Column(
             children: [
               Row(
@@ -870,22 +938,27 @@ class _MissionCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: GH.gold.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                          color: GH.gold.withValues(alpha: 0.4)),
+                      border: Border.all(color: GH.gold.withValues(alpha: 0.4)),
                     ),
-                    child: const Icon(Icons.playlist_add_check_rounded,
-                        color: GH.gold, size: 20),
+                    child: const Icon(
+                      Icons.playlist_add_check_rounded,
+                      color: GH.gold,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('NHIỆM VỤ',
-                            style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.6)),
+                        const Text(
+                          'NHIỆM VỤ',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
                         Text(
                           ready > 0
                               ? '$claimed/$total xong · $ready phần thưởng chờ nhận'
@@ -893,8 +966,9 @@ class _MissionCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: labelStyle(
-                              size: 10.5,
-                              color: ready > 0 ? GH.gold : GH.muted),
+                            size: 10.5,
+                            color: ready > 0 ? GH.gold : GH.muted,
+                          ),
                         ),
                       ],
                     ),
@@ -902,17 +976,24 @@ class _MissionCard extends StatelessWidget {
                   if (ready > 0)
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: GH.gold.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text('NHẬN $ready',
-                          style: labelStyle(size: 9.5, color: GH.gold)),
+                      child: Text(
+                        'NHẬN $ready',
+                        style: labelStyle(size: 9.5, color: GH.gold),
+                      ),
                     )
                   else
-                    const Icon(Icons.chevron_right_rounded,
-                        color: GH.muted, size: 20),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: GH.muted,
+                      size: 20,
+                    ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -950,8 +1031,7 @@ class _MissionTile extends StatelessWidget {
     final shown = m.progress.clamp(0, m.target);
     return NeonPanel(
       color: m.claimable ? const Color(0xFF1B1710) : GH.panel,
-      borderColor:
-          m.claimable ? GH.gold.withValues(alpha: 0.55) : GH.line,
+      borderColor: m.claimable ? GH.gold.withValues(alpha: 0.55) : GH.line,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -961,8 +1041,8 @@ class _MissionTile extends StatelessWidget {
                 m.claimed
                     ? Icons.check_circle_rounded
                     : (m.claimable
-                        ? Icons.workspace_premium_rounded
-                        : Icons.radio_button_unchecked_rounded),
+                          ? Icons.workspace_premium_rounded
+                          : Icons.radio_button_unchecked_rounded),
                 size: 17,
                 color: m.claimed
                     ? GH.green
@@ -970,14 +1050,21 @@ class _MissionTile extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(m.title,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w800)),
+                child: Text(
+                  m.title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-              Text('$shown/${m.target}',
-                  style: labelStyle(
-                      size: 10.5,
-                      color: m.done ? GH.green : GH.muted)),
+              Text(
+                '$shown/${m.target}',
+                style: labelStyle(
+                  size: 10.5,
+                  color: m.done ? GH.green : GH.muted,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 3),
@@ -990,7 +1077,8 @@ class _MissionTile extends StatelessWidget {
               minHeight: 4,
               backgroundColor: GH.line,
               valueColor: AlwaysStoppedAnimation(
-                  m.claimed ? GH.green : GH.gold),
+                m.claimed ? GH.green : GH.gold,
+              ),
             ),
           ),
           const SizedBox(height: 9),
@@ -998,16 +1086,21 @@ class _MissionTile extends StatelessWidget {
             children: [
               Icon(Icons.payments_rounded, size: 13, color: GH.gold),
               const SizedBox(width: 4),
-              Text('+${formatMoney(m.rewardMoney)}',
-                  style: moneyStyle(size: 12)),
+              Text(
+                '+${formatMoney(m.rewardMoney)}',
+                style: moneyStyle(size: 12),
+              ),
               const SizedBox(width: 10),
               Icon(Icons.military_tech_rounded, size: 13, color: GH.cyan),
               const SizedBox(width: 4),
-              Text('+${m.rewardUy} uy',
-                  style: const TextStyle(
-                      color: GH.cyan,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700)),
+              Text(
+                '+${m.rewardUy} uy',
+                style: const TextStyle(
+                  color: GH.cyan,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const Spacer(),
               if (m.claimable)
                 SizedBox(
@@ -1031,7 +1124,6 @@ class _MissionTile extends StatelessWidget {
     );
   }
 }
-
 
 class _ActionTile extends StatelessWidget {
   const _ActionTile({
@@ -1059,22 +1151,27 @@ class _ActionTile extends StatelessWidget {
           children: [
             Icon(icon, size: 18, color: color),
             const SizedBox(height: 6),
-            Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 11.5, fontWeight: FontWeight.w800)),
-            Text(sub,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: labelStyle(size: 9)),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            Text(
+              sub,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: labelStyle(size: 9),
+            ),
           ],
         ),
       ),
     );
   }
 }
-
 
 class _HeatBar extends StatelessWidget {
   const _HeatBar({required this.state, required this.controller});
@@ -1092,8 +1189,7 @@ class _HeatBar extends StatelessWidget {
         decoration: BoxDecoration(
           color: GH.red.withValues(alpha: hot ? 0.16 : 0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-              color: GH.red.withValues(alpha: hot ? 0.6 : 0.3)),
+          border: Border.all(color: GH.red.withValues(alpha: hot ? 0.6 : 0.3)),
         ),
         child: Row(
           children: [
@@ -1105,21 +1201,21 @@ class _HeatBar extends StatelessWidget {
                     ? 'Độ nóng ${state.heat} · cớm đang để ý, không chém được'
                     : 'Độ nóng ${state.heat} · thu nhập −${(state.heatPenalty * 100).round()}%',
                 maxLines: 2,
-                style: labelStyle(
-                    size: 9.5, color: hot ? GH.red : GH.muted),
+                style: labelStyle(size: 9.5, color: hot ? GH.red : GH.muted),
               ),
             ),
             GestureDetector(
               onTap: () => _bribe(context),
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: GH.gold.withValues(alpha: 0.16),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text('ĐÚT ${formatMoney(state.bribeCost)}',
-                    style: labelStyle(size: 9, color: GH.gold)),
+                child: Text(
+                  'ĐÚT ${formatMoney(state.bribeCost)}',
+                  style: labelStyle(size: 9, color: GH.gold),
+                ),
               ),
             ),
           ],
@@ -1137,7 +1233,6 @@ class _HeatBar extends StatelessWidget {
     }
   }
 }
-
 
 class _CampaignStrip extends StatelessWidget {
   const _CampaignStrip({
@@ -1164,18 +1259,10 @@ class _CampaignStrip extends StatelessWidget {
           borderColor: GH.cyan.withValues(alpha: 0.3),
           child: Row(
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: GH.cyan.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: GH.cyan.withValues(alpha: 0.4)),
-                ),
-                child: const Icon(Icons.menu_book_rounded,
-                    color: GH.cyan, size: 19),
+              BossAvatar(
+                chapterId: current?.id ?? chapters.length - 1,
+                size: 38,
+                borderColor: GH.cyan.withValues(alpha: 0.4),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1183,9 +1270,13 @@ class _CampaignStrip extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'CỐT TRUYỆN · CHƯƠNG ${(current?.id ?? chapters.length) + 1}',
+                      current == null
+                          ? 'CỐT TRUYỆN · HOÀN THÀNH'
+                          : 'CỐT TRUYỆN · CHƯƠNG ${current.id + 1}',
                       style: const TextStyle(
-                          fontSize: 11.5, fontWeight: FontWeight.w800),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     Text(
                       current == null
@@ -1198,8 +1289,11 @@ class _CampaignStrip extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded,
-                  size: 18, color: GH.muted),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: GH.muted,
+              ),
             ],
           ),
         ),
@@ -1226,7 +1320,8 @@ class _ChapterTile extends StatelessWidget {
     final ch = chapter;
     final current = ch.status == 'current';
     final cleared = ch.status == 'cleared';
-    final canFight = current &&
+    final canFight =
+        current &&
         state.ownedCount >= ch.needOwned &&
         state.uy >= ch.needUy &&
         !busy;
@@ -1235,65 +1330,88 @@ class _ChapterTile extends StatelessWidget {
       borderColor: current
           ? GH.cyan.withValues(alpha: 0.45)
           : (cleared ? GH.green.withValues(alpha: 0.3) : GH.line),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text('CHƯƠNG ${ch.id + 1}',
-                  style: labelStyle(size: 9, color: GH.cyan)),
-              const Spacer(),
-              Text(
-                cleared
-                    ? 'ĐÃ QUA'
-                    : (current ? 'ĐANG MỞ' : 'CHƯA MỞ'),
-                style: labelStyle(
-                    size: 8.5,
-                    color: cleared
-                        ? GH.green
-                        : (current ? GH.gold : GH.muted)),
-              ),
-            ],
+          BossAvatar(
+            chapterId: ch.id,
+            size: 64,
+            dimmed: !current && !cleared,
+            borderColor: current
+                ? GH.cyan.withValues(alpha: 0.5)
+                : (cleared ? GH.green.withValues(alpha: 0.4) : GH.line),
           ),
-          const SizedBox(height: 3),
-          Text(ch.title,
-              style: const TextStyle(
-                  fontSize: 12.5, fontWeight: FontWeight.w800)),
-          Text(
-            '${ch.desc} · Trùm: ${ch.bossName} (${ch.bossPower} lực)',
-            style: labelStyle(size: 9.5),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Text(
-                'Cần ${ch.needOwned} ô · ${formatMoney(ch.needUy)} uy',
-                style: labelStyle(
-                    size: 9,
-                    color: current &&
-                            (state.ownedCount < ch.needOwned ||
-                                state.uy < ch.needUy)
-                        ? GH.red
-                        : GH.muted),
-              ),
-              const Spacer(),
-              Text(
-                '+${formatMoney(ch.rewardMoney)} · +${ch.rewardUy} uy',
-                style: labelStyle(size: 9, color: GH.gold),
-              ),
-            ],
-          ),
-          if (current) ...[
-            const SizedBox(height: 8),
-            PrimaryButton(
-              label: canFight ? 'ĐÁNH TRÙM' : 'CHƯA ĐỦ ĐIỀU KIỆN',
-              icon: Icons.sports_mma_rounded,
-              height: 34,
-              color: GH.cyan,
-              enabled: canFight,
-              onTap: onFight,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'CHƯƠNG ${ch.id + 1}',
+                      style: labelStyle(size: 9, color: GH.cyan),
+                    ),
+                    const Spacer(),
+                    Text(
+                      cleared ? 'ĐÃ QUA' : (current ? 'ĐANG MỞ' : 'CHƯA MỞ'),
+                      style: labelStyle(
+                        size: 8.5,
+                        color: cleared
+                            ? GH.green
+                            : (current ? GH.gold : GH.muted),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  ch.title,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  '${ch.desc} · Trùm: ${ch.bossName} (${ch.bossPower} lực)',
+                  style: labelStyle(size: 9.5),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Text(
+                      'Cần ${ch.needOwned} ô · ${formatMoney(ch.needUy)} uy',
+                      style: labelStyle(
+                        size: 9,
+                        color:
+                            current &&
+                                (state.ownedCount < ch.needOwned ||
+                                    state.uy < ch.needUy)
+                            ? GH.red
+                            : GH.muted,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '+${formatMoney(ch.rewardMoney)} · +${ch.rewardUy} uy',
+                      style: labelStyle(size: 9, color: GH.gold),
+                    ),
+                  ],
+                ),
+                if (current) ...[
+                  const SizedBox(height: 8),
+                  PrimaryButton(
+                    label: canFight ? 'ĐÁNH TRÙM' : 'CHƯA ĐỦ ĐIỀU KIỆN',
+                    icon: Icons.sports_mma_rounded,
+                    height: 34,
+                    color: GH.cyan,
+                    enabled: canFight,
+                    onTap: onFight,
+                  ),
+                ],
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -1320,19 +1438,22 @@ class _PrestigeCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.restart_alt_rounded,
-                    color: GH.gold, size: 18),
+                const Icon(Icons.restart_alt_rounded, color: GH.gold, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'MÁU GIANG HỒ x${state.prestigeMultiplier.toStringAsFixed(1)}',
                     style: const TextStyle(
-                        fontSize: 11.5, fontWeight: FontWeight.w800),
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
                 if (state.prestige > 0)
-                  Text('RA TÙ ${state.prestige} LẦN',
-                      style: labelStyle(size: 9, color: GH.gold)),
+                  Text(
+                    'RA TÙ ${state.prestige} LẦN',
+                    style: labelStyle(size: 9, color: GH.gold),
+                  ),
               ],
             ),
             const SizedBox(height: 4),
@@ -1371,12 +1492,13 @@ class _PrestigeCard extends StatelessWidget {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: Text('Ở LẠI', style: labelStyle(size: 12))),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Ở LẠI', style: labelStyle(size: 12)),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: Text('RA TÙ',
-                  style: labelStyle(size: 12, color: GH.gold))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('RA TÙ', style: labelStyle(size: 12, color: GH.gold)),
+          ),
         ],
       ),
     );

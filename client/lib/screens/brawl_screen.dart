@@ -1,9 +1,12 @@
 import 'package:flame/game.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../scene/brawl_game.dart';
 import '../theme.dart';
+import '../widgets/boss_avatar.dart';
 import '../widgets/common.dart';
 
 class BrawlScreen extends StatefulWidget {
@@ -14,6 +17,7 @@ class BrawlScreen extends StatefulWidget {
     required this.enemyName,
     required this.myCount,
     this.myWeapon = '',
+    this.bossChapter,
   });
 
   final BrawlResult result;
@@ -22,6 +26,9 @@ class BrawlScreen extends StatefulWidget {
   final int myCount;
   final String myWeapon;
 
+  /// Có giá trị khi đánh trùm cốt truyện: hiện chân dung ở HUD trên.
+  final int? bossChapter;
+
   @override
   State<BrawlScreen> createState() => _BrawlScreenState();
 }
@@ -29,6 +36,7 @@ class BrawlScreen extends StatefulWidget {
 class _BrawlScreenState extends State<BrawlScreen> {
   late final BrawlGame _game;
   bool _done = false;
+  Timer? _autoClose;
 
   @override
   void initState() {
@@ -41,9 +49,20 @@ class _BrawlScreenState extends State<BrawlScreen> {
       enemyCount: 3,
       myWeapon: widget.myWeapon,
       onFinished: () {
-        if (mounted) setState(() => _done = true);
+        if (!mounted) return;
+        setState(() => _done = true);
+        // Giữ màn kết thúc 5s rồi tự thoát (bấm XONG vẫn thoát sớm hơn).
+        _autoClose = Timer(const Duration(seconds: 5), () {
+          if (mounted) Navigator.of(context).pop();
+        });
       },
     );
+  }
+
+  @override
+  void dispose() {
+    _autoClose?.cancel();
+    super.dispose();
   }
 
   @override
@@ -61,6 +80,14 @@ class _BrawlScreenState extends State<BrawlScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
                 child: Row(
                   children: [
+                    if (widget.bossChapter != null) ...[
+                      BossAvatar(
+                        chapterId: widget.bossChapter!,
+                        size: 34,
+                        borderColor: GH.red.withValues(alpha: 0.6),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
                     Expanded(
                       child: Text(
                         '${widget.enemyName} · thuế ${formatMoney(r.defense)} phòng thủ',
@@ -71,8 +98,11 @@ class _BrawlScreenState extends State<BrawlScreen> {
                     ),
                     IconButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded,
-                          color: GH.muted, size: 22),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: GH.muted,
+                        size: 22,
+                      ),
                     ),
                   ],
                 ),
@@ -119,29 +149,35 @@ class _ResultPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(win ? Icons.emoji_events_rounded : Icons.sentiment_dissatisfied_rounded,
-                  color: color, size: 20),
+              Icon(
+                win
+                    ? Icons.emoji_events_rounded
+                    : Icons.sentiment_dissatisfied_rounded,
+                color: color,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  win ? 'CHIẾM ĐƯỢC ${result.territoryName}' : 'THUA RỒI ĐẠI CA',
+                  win
+                      ? 'CHIẾM ĐƯỢC ${result.territoryName}'
+                      : 'THUA RỒI ĐẠI CA',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      color: color,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900),
+                    color: color,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
               ),
             ],
           ),
-          if (win) ...[
-            const SizedBox(height: 6),
-            _stars(result),
-          ],
+          if (win) ...[const SizedBox(height: 6), _stars(result)],
           const SizedBox(height: 10),
           _row('Lực / Phòng thủ', '${result.power} / ${result.defense}'),
-          if (win) _row('Cướp được', '+${formatMoney(result.reward)} đ', GH.gold),
+          if (win)
+            _row('Cướp được', '+${formatMoney(result.reward)} đ', GH.gold),
           if (result.wounded > 0)
             _row('Lính bị thương', '${result.wounded} đứa', GH.red),
           _row(
@@ -183,8 +219,7 @@ class _ResultPanel extends StatelessWidget {
             ),
           ),
         const Spacer(),
-        Text('${r.events.length} đòn',
-            style: labelStyle(size: 9.5)),
+        Text('${r.events.length} đòn', style: labelStyle(size: 9.5)),
       ],
     );
   }
@@ -196,9 +231,14 @@ class _ResultPanel extends StatelessWidget {
         children: [
           Text(label, style: labelStyle(size: 12)),
           const Spacer(),
-          Text(value,
-              style: TextStyle(
-                  color: color, fontSize: 13, fontWeight: FontWeight.w800)),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
         ],
       ),
     );

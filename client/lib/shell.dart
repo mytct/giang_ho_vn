@@ -8,6 +8,7 @@ import 'screens/ranking_screen.dart';
 import 'screens/shop_screen.dart';
 import 'theme.dart';
 import 'widgets/common.dart';
+import 'widgets/scene_bg.dart';
 
 class Shell extends StatefulWidget {
   const Shell({super.key, required this.controller});
@@ -43,6 +44,12 @@ class _ShellState extends State<Shell> {
     return Scaffold(
       body: Stack(
         children: [
+          Positioned.fill(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              child: _backdrop(),
+            ),
+          ),
           const Positioned.fill(child: PixelGrid()),
           SafeArea(
             bottom: false,
@@ -109,13 +116,28 @@ class _ShellState extends State<Shell> {
     );
   }
 
+  Widget _backdrop() {
+    if (_index == 1) {
+      // Bản đồ tự vẽ nền riêng, chồng ảnh vào sẽ lộ mép.
+      return const ColoredBox(key: ValueKey('map'), color: GH.bg);
+    }
+    const names = [
+      'bg_alley',
+      'bg_market',
+      'bg_bridge',
+      'bg_shop',
+      'bg_karaoke',
+    ];
+    return SceneBg(key: ValueKey(_index), name: names[_index]);
+  }
+
   void _go(int index) {
     setState(() => _index = index);
     if (index == 1) widget.controller.loadMap().catchError((Object _) {});
     if (index == 4) {
       widget.controller.loadRanking().catchError((Object _) {});
-    widget.controller.loadCampaign().catchError((Object _) {});
-    widget.controller.loadGangs().catchError((Object _) {});
+      widget.controller.loadCampaign().catchError((Object _) {});
+      widget.controller.loadGangs().catchError((Object _) {});
       widget.controller.loadGangs().catchError((Object _) {});
     }
   }
@@ -144,10 +166,14 @@ class _NavItem extends StatelessWidget {
         child: Container(
           margin: const EdgeInsets.fromLTRB(3, 4, 3, 4),
           decoration: BoxDecoration(
-            color: active ? GH.pink.withValues(alpha: 0.10) : Colors.transparent,
+            color: active
+                ? GH.pink.withValues(alpha: 0.10)
+                : Colors.transparent,
             border: Border(
               top: BorderSide(
-                  color: active ? GH.pink : Colors.transparent, width: 2),
+                color: active ? GH.pink : Colors.transparent,
+                width: 2,
+              ),
             ),
           ),
           child: Column(

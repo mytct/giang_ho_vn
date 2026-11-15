@@ -2777,9 +2777,14 @@ func (s *Store) FightChapter(tok string, index int) (BrawlResult, StateView, err
 		res.Reward = c.RewardMoney
 		res.UyGain = c.RewardUy
 		res.XP = c.RewardXP
+		text := fmt.Sprintf("Hạ %s, mở chương %d: %s", c.BossName,
+			p.Chapter+1, Chapters[min(p.Chapter, len(Chapters)-1)].Title)
+		if p.Chapter >= len(Chapters) {
+			text = fmt.Sprintf("Hạ %s — phá xong cốt truyện! Sài Gòn là của mày. Giờ ra tù lấy Máu giang hồ rồi làm lại lớn hơn.", c.BossName)
+		}
 		p.addInbox(InboxMsg{
 			ID: token(), Kind: "story", At: time.Now().Unix(),
-			Text: fmt.Sprintf("Hạ %s, mở chương %d: %s", c.BossName, p.Chapter+1, Chapters[min(p.Chapter, len(Chapters)-1)].Title),
+			Text: text,
 		})
 	}
 	return res, s.stateLocked(p), nil
@@ -2833,6 +2838,90 @@ func (s *Store) Prestige(tok string) (StateView, error) {
 		ID: token(), Kind: "prestige", At: time.Now().Unix(),
 		Text: fmt.Sprintf("Ra tù lần %d — Máu giang hồ x%.1f", p.Prestige, p.PrestigeMultiplier()),
 	})
+	return s.stateLocked(p), nil
+}
+
+// MaxAccount đẩy tài khoản test lên mức cao nhất để thử nội dung cuối game.
+func (s *Store) MaxAccount(tok string) (StateView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return StateView{}, err
+	}
+	s.accrue(p, time.Now())
+	p.Chapter = len(Chapters)
+	p.Money = 5000000
+	p.Uy = 30000
+	p.Level = 40
+	p.XP = 0
+	p.Points = 40
+	p.WeaponIdx = len(Weapons) - 1
+	p.Crew = 4
+	p.Minions = 24
+	for _, b := range BusinessDefs {
+		p.Levels[b.ID] = 5
+	}
+	held := 0
+	for i := range s.territories {
+		if held >= 8 {
+			break
+		}
+		p.Owned[i] = true
+		s.territories[i].OwnerID = "p:" + p.ID
+		s.territories[i].OwnerName = p.Name
+		if s.territories[i].Level < 3 {
+			s.territories[i].Level = 3
+		}
+		held++
+	}
+	s.recalcLandLocked(p)
+	p.addInbox(InboxMsg{
+		ID: token(), Kind: "dev", At: time.Now().Unix(),
+		Text: "Tài khoản test đã được đẩy lên mức cao nhất: xong cốt truyện, đủ uy ra tù, 8 địa bàn.",
+	})
+	return s.stateLocked(p), nil
+}
+
+// ResetTerritories trả toàn bộ địa bàn về trạng thái vô chủ để test combat.
+func (s *Store) ResetTerritories(tok string) (StateView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return StateView{}, err
+	}
+	s.accrue(p, time.Now())
+	for i := range s.territories {
+		s.territories[i].OwnerID = ""
+		s.territories[i].OwnerName = ""
+		s.territories[i].Level = 0
+	}
+	for _, pl := range s.players {
+		pl.Owned = map[int]bool{}
+		s.recalcLandLocked(pl)
+	}
+	return s.stateLocked(p), nil
+}
+
+// GrantTerritories cấp n địa bàn đầu tiên cho tài khoản test.
+func (s *Store) GrantTerritories(tok string, count int) (StateView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return StateView{}, err
+	}
+	s.accrue(p, time.Now())
+	if count < 0 {
+		count = 0
+	}
+	for i := 0; i < count && i < len(s.territories); i++ {
+		p.Owned[i] = true
+		s.territories[i].OwnerID = "p:" + p.ID
+		s.territories[i].OwnerName = p.Name
+	}
+	s.recalcLandLocked(p)
 	return s.stateLocked(p), nil
 }
 
