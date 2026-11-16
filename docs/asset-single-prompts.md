@@ -353,6 +353,79 @@ hand, small pistol tucked in his belt.
 Lưu ý: cùng 1 nhân vật ở cả 16 ô, cùng cỡ cùng màu — đây là yêu cầu quan
 trọng nhất; nếu ra nhiều nhân vật khác nhau thì generate lại.
 
+## PHASE 2E — BIẾN THỂ ĐÀN EM (đám đông khỏi giống nhau)
+
+Cùng **đúng** layout 4×4 / 1024×1024 / 16 ô / quay sang PHẢI như PHASE 2D —
+chỉ đổi dòng `CHARACTER`. Prompt chung giữ nguyên (dán y hệt khối ở trên),
+thay dòng CHARACTER bằng một trong các dòng dưới đây.
+
+| File | Nhân vật |
+|---|---|
+| `sheet_fight_m1.png` | thằng nhóc tóc dựng |
+| `sheet_fight_m2.png` | gã béo hói |
+| `sheet_fight_m3.png` | ông già khô |
+| `sheet_fight_m4.png` | cô gái tóc đuôi ngựa |
+| `sheet_fight_m5.png` | gã hoodie kính đen |
+| `sheet_fight_m6.png` | gã tóc dreadlock |
+| `sheet_fight_m7.png` | chú áo bà ba khăn rằn |
+| `sheet_fight_m8.png` | gã cơ bắp xăm |
+
+```
+m1 CHARACTER: skinny teenage street kid, tall spiky black mohawk, white tank
+top, torn dark jeans, cyan sneakers, thin silver chain, holding a machete in
+his right hand, small toy pistol tucked in his belt.
+```
+```
+m2 CHARACTER: heavyset bald enforcer, thick neck, dark grey tank top stretched
+over a big belly, thick gold chain, black shorts, rubber sandals, holding a
+machete in his right hand, small toy pistol tucked in his belt.
+```
+```
+m3 CHARACTER: wiry old gangster, grey hair combed back, thin moustache, faded
+olive button shirt, brown trousers, rubber sandals, holding a machete in his
+right hand, small toy pistol tucked in his belt.
+```
+```
+m4 CHARACTER: tough young woman, black ponytail, red bandana around her neck,
+cropped denim jacket, dark leggings, black boots, holding a machete in her right
+hand, small toy pistol tucked in her belt.
+```
+```
+m5 CHARACTER: lanky guy in an oversized grey hoodie with the hood up, dark
+sunglasses, baggy dark pants, worn sneakers, holding a machete in his right
+hand, small toy pistol tucked in his belt.
+```
+```
+m6 CHARACTER: stocky man with short black dreadlocks, flat-color patterned tank
+top, cargo shorts, flip-flops, holding a machete in his right hand, small toy
+pistol tucked in his belt.
+```
+```
+m7 CHARACTER: middle-aged Vietnamese man in a dark blue ao ba ba shirt with
+white buttons, red checkered scarf (khan ran) around his neck, rolled-up
+trousers, bare feet, holding a machete in his right hand, small toy pistol
+tucked in his belt.
+```
+```
+m8 CHARACTER: muscular shirtless enforcer with simple flat tattoo shapes on his
+shoulders (NO letters or symbols), dog tags, camo pants, jungle boots, holding
+a machete in his right hand, small toy pistol tucked in his belt.
+```
+
+Lưu file vào `docs/raw/sheet_fight_m1.png` … `m8.png`, rồi cắt:
+
+```bash
+python3 tools/slice_fight_sheet.py docs/raw/sheet_fight_m1.png
+```
+
+Mỗi nhân vật ra **một** file `client/assets/fight/atlas_m1.png` … `atlas_m8.png`
+(lưới 4×4 = đủ 16 frame trong 1 ảnh). Client nạp atlas và vẽ theo ô, nên không
+có file rời từng frame. Chạy cả loạt:
+
+```bash
+for f in docs/raw/sheet_fight_m*.png; do python3 tools/slice_fight_sheet.py "$f"; done
+```
+
 ---
 
 # PHASE 3 — ICON

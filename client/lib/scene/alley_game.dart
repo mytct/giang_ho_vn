@@ -18,7 +18,27 @@ class AlleyGame extends FlameGame {
   void setRate(double value) => rate = value;
 
   late final ui.Image bg;
-  final Map<String, ui.Image> _minionFrames = {};
+  ui.Image? atlas;
+
+  /// Thứ tự ô trong atlas 4×4 (khớp FightFrames.slots).
+  static const slots = [
+    'run1',
+    'run2',
+    'run3',
+    'run4',
+    'idle1',
+    'idle2',
+    'atk1',
+    'atk2',
+    'hurt',
+    'ko1',
+    'ko2',
+    'win',
+    'gun1',
+    'gun2',
+    'aim',
+    'fire',
+  ];
 
   @override
   Color backgroundColor() => const Color(0xFF07080C);
@@ -26,13 +46,9 @@ class AlleyGame extends FlameGame {
   @override
   Future<void> onLoad() async {
     bg = await loadSceneImage('bg_alley');
-    for (final name in ['idle1', 'idle2', 'run1', 'run2', 'run3', 'run4']) {
-      try {
-        _minionFrames[name] = await loadFightFrame('p_$name');
-      } catch (_) {
-        break;
-      }
-    }
+    try {
+      atlas = await loadFightFrame('atlas_p');
+    } catch (_) {}
     add(AlleyArt(this));
   }
 }
@@ -155,20 +171,13 @@ class AlleyArt extends PositionComponent {
   }
 
   void _drawMinions(Canvas canvas, double w, double h) {
-    final frames = game._minionFrames;
-    if (frames.isEmpty) return;
-
-    ui.Image? idleFrame(double phase) {
-      final idx = (((_t / 0.45) + phase) % 2).floor() + 1;
-      return frames['idle$idx'];
-    }
+    if (game.atlas == null) return;
 
     for (final (fx, fy, fh, phase) in _standSpots) {
-      final img = idleFrame(phase);
-      if (img == null) continue;
+      final idx = (((_t / 0.45) + phase) % 2).floor() + 1;
       _drawSprite(
         canvas,
-        img,
+        'idle$idx',
         cx: w * fx,
         footY: h * fy,
         height: fh,
@@ -177,35 +186,35 @@ class AlleyArt extends PositionComponent {
     }
 
     final runIdx = (((_t / 0.12) % 4)).floor() + 1;
-    final walker = frames['run$runIdx'];
-    if (walker != null) {
-      _drawSprite(
-        canvas,
-        walker,
-        cx: w * _walkerX,
-        footY: h * 0.99,
-        height: 252,
-        flip: false,
-      );
-    }
+    _drawSprite(
+      canvas,
+      'run$runIdx',
+      cx: w * _walkerX,
+      footY: h * 0.99,
+      height: 252,
+      flip: false,
+    );
   }
 
   void _drawSprite(
     Canvas canvas,
-    ui.Image img, {
+    String slot, {
     required double cx,
     required double footY,
     required double height,
     required bool flip,
   }) {
-    final dw = height * img.width / img.height;
+    final atlas = game.atlas;
+    final idx = AlleyGame.slots.indexOf(slot);
+    if (atlas == null || idx < 0) return;
+    final cell = atlas.width / 4;
     canvas.save();
     canvas.translate(cx, footY);
     if (flip) canvas.scale(-1, 1);
     canvas.drawImageRect(
-      img,
-      Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-      Rect.fromLTWH(-dw / 2, -height, dw, height),
+      atlas,
+      Rect.fromLTWH((idx % 4) * cell, (idx ~/ 4) * cell, cell, cell),
+      Rect.fromLTWH(-height / 2, -height, height, height),
       Paint()..filterQuality = FilterQuality.medium,
     );
     canvas.restore();

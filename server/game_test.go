@@ -1287,6 +1287,63 @@ func TestMinionRecruitGearHeal(t *testing.T) {
 	}
 }
 
+func TestBrawlVarianceAndDefenderSkills(t *testing.T) {
+	firstHits := map[int]bool{}
+	for i := 0; i < 30; i++ {
+		evs, _ := simulateBrawl(
+			fighter{hp: 600, hitDmg: 100, critEvery: 3},
+			fighter{hp: 600, hitDmg: 100, critEvery: 4, dodgeEvery: 2},
+		)
+		firstHits[evs[0].Dmg] = true
+		for _, e := range evs {
+			if e.Dmg < 1 && !e.Miss {
+				t.Fatalf("sát thương phải >= 1: %+v", e)
+			}
+		}
+	}
+	if len(firstHits) < 2 {
+		t.Fatalf("sát thương phải dao động, chỉ thấy %v", firstHits)
+	}
+
+	taken := func(dr float64) int {
+		evs, _ := simulateBrawl(
+			fighter{hp: 1 << 20, hitDmg: 100, critEvery: 3, dr: dr},
+			fighter{hp: 1 << 20, hitDmg: 100, critEvery: 4},
+		)
+		sum := 0
+		for _, e := range evs {
+			if e.Side == "enemy" && !e.Miss {
+				sum += e.Dmg
+			}
+		}
+		return sum
+	}
+	full, half := taken(0), taken(0.5)
+	if half >= full*3/5 {
+		t.Fatalf("giáp 50%% phải giảm sát thương nhận vào: %d vs %d", half, full)
+	}
+
+	st := NewStore()
+	_, tokA, _ := st.Login("Đại Ca A")
+	b, _, _ := st.Login("Đệ B")
+	b.CrewSkills = []string{"ne"}
+	st.territories[0].OwnerID = "p:" + b.ID
+	st.territories[0].OwnerName = b.Name
+	res, _, err := st.Attack(tokA, 0)
+	if err != nil {
+		t.Fatalf("đánh: %v", err)
+	}
+	missed := false
+	for _, e := range res.Events {
+		if e.Side == "me" && e.Miss {
+			missed = true
+		}
+	}
+	if !missed {
+		t.Fatal("chủ địa bàn có Né Đòn phải né được đòn của mình")
+	}
+}
+
 func TestMinionsGetWoundedInBattle(t *testing.T) {
 	st, tok, p := newTestPlayer(t)
 	p.Money = 1_000_000

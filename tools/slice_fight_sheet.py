@@ -10,7 +10,8 @@ Pipeline mỗi sheet:
 3. despeckle: pixel màu checker lẻ loi giữa vùng trong suốt;
 4. drop mảnh nhỏ (<2500px) — sót chữ/mẩu;
 5. trim alpha, scale ĐỒNG NHẤT cả sheet (tham chiếu frame đứng idle1 = 192px),
-   đặt đáy-giữa vào khung 256x256 để chân chạm cùng một đường đất.
+   đặt đáy-giữa vào ô 256x256 để chân chạm cùng một đường đất;
+6. gom 16 ô thành MỘT atlas 1024x1024 mỗi nhân vật (`atlas_p.png`, `atlas_m1.png`...).
 """
 from __future__ import annotations
 
@@ -193,18 +194,23 @@ def slice_sheet(path: Path, prefix: str) -> None:
     print(f"  scale cả sheet: x{scale:.3f} (chiều cao đứng {ref.height}px)")
 
     OUT.mkdir(parents=True, exist_ok=True)
-    for slot, body in zip(SLOTS, cells):
+    atlas = Image.new("RGBA", (CELL * GRID, CELL * GRID), (0, 0, 0, 0))
+    for idx, (slot, body) in enumerate(zip(SLOTS, cells)):
         if body is None:
-            print(f"!! ô trống — {prefix}_{slot}")
+            print(f"!! ô trống — {prefix}:{slot}")
             continue
         new_w = max(1, min(CELL, round(body.width * scale)))
         new_h = max(1, min(CELL, round(body.height * scale)))
         body = body.resize((new_w, new_h), Image.LANCZOS)
-        canvas = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
-        canvas.paste(body, ((CELL - new_w) // 2, CELL - new_h), body)
-        dest = OUT / f"{prefix}_{slot}.png"
-        canvas.save(dest)
-        print(f"ok {dest.name} {new_w}x{new_h}")
+        r, c = divmod(idx, GRID)
+        atlas.paste(
+            body,
+            (c * CELL + (CELL - new_w) // 2, r * CELL + CELL - new_h),
+            body,
+        )
+    dest = OUT / f"atlas_{prefix}.png"
+    atlas.save(dest)
+    print(f"ok {dest.name} (4x4, 1024x1024)")
 
 
 def main() -> None:
@@ -214,7 +220,7 @@ def main() -> None:
         (RAW / "sheet_fight_enemy.png", "e"),
     ]
     if args:
-        jobs = [(Path(a), Path(a).stem.split("_")[-1][:1]) for a in args]
+        jobs = [(Path(a), Path(a).stem.split("_")[-1]) for a in args]
     for path, prefix in jobs:
         if not path.exists():
             print(f"bỏ qua (chưa có): {path}")

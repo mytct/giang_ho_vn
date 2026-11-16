@@ -380,6 +380,80 @@ type BrawlResult struct {
 	TerritoryName string       `json:"territoryName"`
 }
 
+type fighter struct {
+	hp         int
+	hitDmg     int
+	critEvery  int
+	dodgeEvery int
+	firstHitX2 bool
+	dr         float64
+}
+
+func jitter(dmg int) int {
+	d := dmg * (88 + mrand.Intn(25)) / 100
+	if d < 1 {
+		return 1
+	}
+	return d
+}
+
+func crits(every int) bool { return every > 0 && mrand.Intn(every) == 0 }
+
+// Mỗi hiệp hai bên ra đòn: sát thương lệch ±12%, chí mạng ngẫu nhiên theo tỉ lệ
+// 1/critEvery, nên hai trận cùng chỉ số không còn ra y hệt nhau.
+func simulateBrawl(me, foe fighter) ([]BrawlEvent, bool) {
+	hpMe, hpEn := me.hp, foe.hp
+	events := make([]BrawlEvent, 0, 16)
+	at := 0
+	add := func(side string, crit, miss bool, dmg int) {
+		if side == "me" {
+			hpEn -= dmg
+		} else {
+			hpMe -= dmg
+		}
+		events = append(events, BrawlEvent{
+			At: at, Side: side, Crit: crit, Miss: miss, Dmg: dmg,
+			MyHp: max(hpMe, 0), EnemyHp: max(hpEn, 0),
+		})
+		at += 380
+	}
+	for round := 1; round <= 40 && hpMe > 0 && hpEn > 0; round++ {
+		if foe.dodgeEvery > 0 && round%foe.dodgeEvery == 0 {
+			add("me", false, true, 0)
+		} else {
+			dmg := jitter(me.hitDmg)
+			crit := crits(me.critEvery)
+			if crit {
+				dmg = dmg * 17 / 10
+			}
+			if round == 1 && me.firstHitX2 {
+				dmg *= 2
+			}
+			if dmg = int(float64(dmg) * (1 - foe.dr)); dmg < 1 {
+				dmg = 1
+			}
+			add("me", crit, false, dmg)
+		}
+		if hpEn <= 0 {
+			break
+		}
+		if me.dodgeEvery > 0 && round%me.dodgeEvery == 0 {
+			add("enemy", false, true, 0)
+			continue
+		}
+		dmg := jitter(foe.hitDmg)
+		crit := crits(foe.critEvery)
+		if crit {
+			dmg = dmg * 17 / 10
+		}
+		if dmg = int(float64(dmg) * (1 - me.dr)); dmg < 1 {
+			dmg = 1
+		}
+		add("enemy", crit, false, dmg)
+	}
+	return events, hpEn <= 0 && hpMe > 0
+}
+
 func token() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
@@ -1217,9 +1291,7 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 	}
 	eff := p.SkillEffects()
 	hpMe := 150 + p.AvailableCrew()*20 + eff.HpAdd + p.BonusHP() + p.MinionHealthy()/4
-	hpEn := 120 + defense
 	myHitDmg := int(float64(power/2+4) * (1 + eff.DmgMul))
-	enHitDmg := defense/5 + 3
 	critEvery := eff.CritEvery
 	if critEvery == 0 {
 		critEvery = 3
@@ -1238,50 +1310,26 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 		myHitDmg = myHitDmg * 9 / 10
 	}
 
+	foe := fighter{hp: 120 + defense, hitDmg: defense/5 + 3, critEvery: 4}
+	if defender != nil {
+		foeEff := defender.SkillEffects()
+		foe.hp += foeEff.HpAdd
+		foe.hitDmg = int(float64(foe.hitDmg) * (1 + foeEff.DmgMul))
+		foe.dodgeEvery = foeEff.DodgeEvery
+		foe.dr = defender.DamageReduction()
+		if foeEff.CritEvery > 0 {
+			foe.critEvery = foeEff.CritEvery
+		}
+	}
+
 	res := BrawlResult{
 		Power: power, Defense: defense,
 		TerritoryID: id, TerritoryName: t.Name,
 	}
-	at := 0
-	for round := 1; round <= 40 && hpMe > 0 && hpEn > 0; round++ {
-		crit := round%critEvery == 0
-		dmg := myHitDmg
-		if crit {
-			dmg = dmg * 17 / 10
-		}
-		if round == 1 && eff.FirstHitX2 {
-			dmg *= 2
-		}
-		hpEn -= dmg
-		res.Events = append(res.Events, BrawlEvent{
-			At: at, Side: "me", Crit: crit, Dmg: dmg, MyHp: max(hpMe, 0), EnemyHp: max(hpEn, 0),
-		})
-		at += 380
-		if hpEn <= 0 {
-			break
-		}
-		if eff.DodgeEvery > 0 && round%eff.DodgeEvery == 0 {
-			res.Events = append(res.Events, BrawlEvent{
-				At: at, Side: "enemy", Miss: true, MyHp: max(hpMe, 0), EnemyHp: max(hpEn, 0),
-			})
-			at += 380
-			continue
-		}
-		edmg := enHitDmg
-		if round%4 == 0 {
-			edmg = edmg * 3 / 2
-		}
-		edmg = int(float64(edmg) * (1 - p.DamageReduction()))
-		if edmg < 1 {
-			edmg = 1
-		}
-		hpMe -= edmg
-		res.Events = append(res.Events, BrawlEvent{
-			At: at, Side: "enemy", Crit: round%4 == 0, Dmg: edmg, MyHp: max(hpMe, 0), EnemyHp: max(hpEn, 0),
-		})
-		at += 380
-	}
-	res.Win = hpEn <= 0 && hpMe > 0
+	res.Events, res.Win = simulateBrawl(fighter{
+		hp: hpMe, hitDmg: myHitDmg, critEvery: critEvery,
+		dodgeEvery: eff.DodgeEvery, firstHitX2: eff.FirstHitX2, dr: p.DamageReduction(),
+	}, foe)
 	p.LastBrawl = time.Now()
 	if healthy := p.MinionHealthy(); healthy > 0 {
 		rate := 10
@@ -2721,9 +2769,7 @@ func (s *Store) FightChapter(tok string, index int) (BrawlResult, StateView, err
 		power = 10
 	}
 	hpMe := 150 + crewForFight*20 + eff.HpAdd + p.BonusHP()
-	hpEn := 120 + c.BossPower
 	myHitDmg := int(float64(power/2+4) * (1 + eff.DmgMul))
-	enHitDmg := c.BossPower/5 + 4
 	critEvery := eff.CritEvery
 	if critEvery == 0 {
 		critEvery = 3
@@ -2741,34 +2787,10 @@ func (s *Store) FightChapter(tok string, index int) (BrawlResult, StateView, err
 	}
 	res := BrawlResult{Power: power, Defense: c.BossPower,
 		TerritoryID: -(index + 1), TerritoryName: c.BossName}
-	at := 0
-	for round := 1; round <= 40 && hpMe > 0 && hpEn > 0; round++ {
-		crit := round%critEvery == 0
-		dmg := myHitDmg
-		if crit {
-			dmg = dmg * 17 / 10
-		}
-		hpEn -= dmg
-		res.Events = append(res.Events, BrawlEvent{
-			At: at, Side: "me", Crit: crit, Dmg: dmg,
-			MyHp: max(hpMe, 0), EnemyHp: max(hpEn, 0),
-		})
-		at += 380
-		if hpEn <= 0 {
-			break
-		}
-		edmg := enHitDmg
-		if round%4 == 0 {
-			edmg = edmg * 3 / 2
-		}
-		hpMe -= edmg
-		res.Events = append(res.Events, BrawlEvent{
-			At: at, Side: "enemy", Crit: round%4 == 0, Dmg: edmg,
-			MyHp: max(hpMe, 0), EnemyHp: max(hpEn, 0),
-		})
-		at += 380
-	}
-	res.Win = hpEn <= 0 && hpMe > 0
+	res.Events, res.Win = simulateBrawl(fighter{
+		hp: hpMe, hitDmg: myHitDmg, critEvery: critEvery,
+		dodgeEvery: eff.DodgeEvery, dr: p.DamageReduction(),
+	}, fighter{hp: 120 + c.BossPower, hitDmg: c.BossPower/5 + 4, critEvery: 4})
 	if res.Win {
 		p.Chapter++
 		p.Money += c.RewardMoney
