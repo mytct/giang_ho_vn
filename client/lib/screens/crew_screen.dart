@@ -321,6 +321,7 @@ class CrewScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   Row(
                     children: [
                       Text('ĐÀN EM (${s.crew})',
@@ -413,6 +414,98 @@ class CrewScreen extends StatelessWidget {
                     onHeal: () => _healMinions(context),
                     onGear: (id, count) => _buyGear(context, id, count),
                   ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Text('TƯỚNG LĨNH (${s.generals.length}/3)',
+                          style: labelStyle(size: 11, color: GH.text)),
+                      const Spacer(),
+                      Text('+${s.generalPower} lực',
+                          style: labelStyle(size: 10.5, color: GH.pink)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  for (final g in s.generals)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: NeonPanel(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 9),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.military_tech_rounded,
+                                size: 20, color: GH.pink),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${g.name} · Lv ${g.level}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800)),
+                                  Text(
+                                    '${g.skillA.name} · ${g.skillB.name} · +${g.power} lực',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: labelStyle(size: 9.5),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 92,
+                              child: PrimaryButton(
+                                label: g.level >= 10
+                                    ? 'MAX'
+                                    : formatMoney(g.trainCost),
+                                icon: Icons.fitness_center_rounded,
+                                height: 34,
+                                color: GH.pink,
+                                enabled: g.level < 10 &&
+                                    s.money >= g.trainCost &&
+                                    !controller.busy,
+                                onTap: () => _trainGeneral(context, g.id),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (s.generals.length < 3)
+                    NeonPanel(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 9),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person_search_rounded,
+                              size: 20, color: GH.pink),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Mời tướng: +lực, +máu, 2 kỹ năng. Thua trận có thể mất xác.',
+                              style: labelStyle(size: 10),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 96,
+                            child: PrimaryButton(
+                              label: formatMoney(s.generalCost),
+                              icon: Icons.add_rounded,
+                              height: 34,
+                              color: GH.pink,
+                              enabled: s.money >= s.generalCost &&
+                                  !controller.busy,
+                              onTap: () => _recruitGeneral(context),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -432,6 +525,28 @@ class CrewScreen extends StatelessWidget {
         final name = _crewNames[(skills.length - 1) % _crewNames.length];
         showToast(context, 'Tân binh $name · ${skill.name}');
       }
+    } on ApiException catch (e) {
+      if (context.mounted) showToast(context, e.message, error: true);
+    }
+  }
+
+  Future<void> _recruitGeneral(BuildContext context) async {
+    try {
+      await controller.recruitGeneral();
+      final list = controller.state?.generals ?? const [];
+      final g = list.isEmpty ? null : list.last;
+      if (context.mounted) {
+        showToast(context, g == null ? 'Đã mời tướng' : 'Tướng ${g.name} nhập băng');
+      }
+    } on ApiException catch (e) {
+      if (context.mounted) showToast(context, e.message, error: true);
+    }
+  }
+
+  Future<void> _trainGeneral(BuildContext context, String id) async {
+    try {
+      await controller.trainGeneral(id);
+      if (context.mounted) showToast(context, 'Tướng lên cấp');
     } on ApiException catch (e) {
       if (context.mounted) showToast(context, e.message, error: true);
     }

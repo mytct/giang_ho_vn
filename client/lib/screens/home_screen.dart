@@ -479,6 +479,17 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     _kv('Chi phí', '${formatMoney(biz.upgradeCost)} đ'),
                     _kv(
+                      'Bảo kê',
+                      '${biz.racket}/3 (+${biz.racket * 15}% thu nhập)',
+                      color: GH.pink,
+                    ),
+                    if (biz.racket < 3)
+                      _kv(
+                        'Dằn mặt thêm',
+                        '${formatMoney(biz.racketCost)} đ · +15% · +5 nóng',
+                        color: GH.muted,
+                      ),
+                    _kv(
                       'Mày đang có',
                       '${formatMoney(s.money)} đ',
                       color: GH.gold,
@@ -492,6 +503,20 @@ class _HomeScreenState extends State<HomeScreen> {
                       enabled: canBuy,
                       onTap: () => _doUpgrade(ctx, biz.id),
                     ),
+                    if (biz.racket < 3) ...[
+                      const SizedBox(height: 10),
+                      PrimaryButton(
+                        label: s.money >= biz.racketCost && !c.busy
+                            ? 'DẰN MẶT  −${formatMoney(biz.racketCost)}'
+                            : (c.busy
+                                ? 'ĐANG XỬ LÝ...'
+                                : 'KHÔNG ĐỦ TIỀN DẰN MẶT'),
+                        icon: Icons.local_fire_department_rounded,
+                        color: GH.pink,
+                        enabled: s.money >= biz.racketCost && !c.busy,
+                        onTap: () => _doRacket(ctx, biz.id),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -500,6 +525,15 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _doRacket(BuildContext ctx, String id) async {
+    try {
+      await widget.controller.raiseRacket(id);
+      if (ctx.mounted) showToast(ctx, 'Đã dằn mặt: +15% thu nhập, +5 độ nóng');
+    } on ApiException catch (e) {
+      if (ctx.mounted) showToast(ctx, e.message, error: true);
+    }
   }
 
   Future<void> _doUpgrade(BuildContext ctx, String id) async {
@@ -610,6 +644,15 @@ class _PlayerHeader extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  if (state.upkeep > 0)
+                    Text(
+                      '−${formatMoney(state.upkeep)}/s lương',
+                      style: TextStyle(
+                        color: state.upkeep >= state.rate ? GH.red : GH.muted,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -820,7 +863,8 @@ class _BusinessTile extends StatelessWidget {
                       Text(
                         locked
                             ? 'Cần đạt ${business.unlockName}'
-                            : 'Cấp ${business.level} · +${formatMoney(business.rate)}/s',
+                            : 'Cấp ${business.level} · +${formatMoney(business.rate)}/s'
+                                '${business.racket > 0 ? ' · BK ${business.racket}/3' : ''}',
                         style: labelStyle(
                           size: 11,
                           color: locked ? GH.muted : GH.cyan,

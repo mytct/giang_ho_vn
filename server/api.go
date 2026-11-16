@@ -91,6 +91,24 @@ func registerRoutes(mux *http.ServeMux, st *Store) {
 		writeJSON(w, 200, state)
 	})
 
+	mux.HandleFunc("POST /api/dev/unlimited", func(w http.ResponseWriter, r *http.Request) {
+		if !devEnabled {
+			fail(w, 404, "dev tools đã tắt")
+			return
+		}
+		var body struct {
+			Token string `json:"token"`
+			On    bool   `json:"on"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state, err := st.SetDevUnlimited(body.Token, body.On)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, state)
+	})
+
 	mux.HandleFunc("POST /api/dev/reset-territories", func(w http.ResponseWriter, r *http.Request) {
 		if !devEnabled {
 			fail(w, 404, "dev tools đã tắt")
@@ -454,6 +472,98 @@ func registerRoutes(mux *http.ServeMux, st *Store) {
 			return
 		}
 		writeJSON(w, 200, map[string]any{"state": state})
+	})
+
+	mux.HandleFunc("POST /api/business/racket", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token string `json:"token"`
+			ID    string `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state, err := st.RaiseRacket(body.Token, body.ID)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"state": state})
+	})
+
+	mux.HandleFunc("POST /api/general/recruit", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token string `json:"token"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state, err := st.RecruitGeneral(body.Token)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"state": state})
+	})
+
+	mux.HandleFunc("POST /api/general/train", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token string `json:"token"`
+			ID    string `json:"id"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state, err := st.TrainGeneral(body.Token, body.ID)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"state": state})
+	})
+
+	mux.HandleFunc("GET /api/gang/chat", func(w http.ResponseWriter, r *http.Request) {
+		chat, err := st.GangChat(readToken(r))
+		if err != nil {
+			fail(w, 401, err.Error())
+			return
+		}
+		writeJSON(w, 200, chat)
+	})
+
+	mux.HandleFunc("POST /api/gang/chat", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token string `json:"token"`
+			Text  string `json:"text"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		chat, err := st.SendGangChat(body.Token, body.Text)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, chat)
+	})
+
+	mux.HandleFunc("POST /api/gang/promote", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token    string `json:"token"`
+			TargetID string `json:"targetId"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		chat, err := st.PromoteMember(body.Token, body.TargetID)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, chat)
+	})
+
+	mux.HandleFunc("POST /api/gang/payout", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token  string `json:"token"`
+			Amount int64  `json:"amount"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		chat, err := st.PayoutTreasury(body.Token, body.Amount)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, chat)
 	})
 
 	mux.HandleFunc("POST /api/inbox/read", func(w http.ResponseWriter, r *http.Request) {

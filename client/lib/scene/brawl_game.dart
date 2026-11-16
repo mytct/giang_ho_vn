@@ -139,7 +139,7 @@ class _Arc {
   final bool flip;
   final Color color;
   double age = 0;
-  static const life = 0.22;
+  static const life = 0.15;
 }
 
 class _Tracer {
@@ -295,6 +295,8 @@ class BrawlStage extends PositionComponent {
   double _flashEn = 0;
   double _endAt = 7000;
   double _nextFx = 0;
+  int _autoMe = -1;
+  int _autoEn = -1;
   final math.Random _rnd = math.Random();
   final List<_Drop> _blood = [];
   final List<_Splat> _splats = [];
@@ -408,7 +410,7 @@ class BrawlStage extends PositionComponent {
     }
 
     const approach = 500.0;
-    const strike = 320.0;
+    const strike = 180.0;
     final firstRAt = _rEvs.isEmpty ? 2600.0 : _rEvs.first.rAt;
     // Hai băng chạy vào từ ngoài màn hình một lần rồi lao ra đánh.
     _segs.add(_Seg(true, 'run', 0, firstRAt - approach, -0.55, 0.20));
@@ -419,7 +421,7 @@ class BrawlStage extends PositionComponent {
       if (e.real) {
         final defHome = !e.mine && game.myGun ? 0.12 : 0.20;
         _segs.add(
-          _Seg(!e.mine, 'hurt', e.rAt, e.rAt + 300, defHome, defHome - 0.07),
+          _Seg(!e.mine, 'hurt', e.rAt, e.rAt + 190, defHome, defHome - 0.07),
         );
       }
     }
@@ -501,13 +503,38 @@ class BrawlStage extends PositionComponent {
 
     // Va chạm lẻ tẻ trong đám đông để cảnh lúc nào cũng động.
     if (_koAt < 0 && size.x > 0 && _elapsed > _nextFx) {
-      _nextFx = _elapsed + 240 + _rnd.nextDouble() * 420;
+      _nextFx = _elapsed + 160 + _rnd.nextDouble() * 320;
       final x = size.x * (0.06 + _rnd.nextDouble() * 0.88);
       final y = size.y * (0.52 + _rnd.nextDouble() * 0.24);
       final color = [Colors.white, GH.red, GH.cyan][_rnd.nextInt(3)];
       _spawnSparks(x, y, color.withValues(alpha: 0.7), count: 3);
       if (_rnd.nextBool()) {
         _arcs.add(_Arc(x, y, _rnd.nextBool(), color.withValues(alpha: 0.3)));
+      }
+      if (_rnd.nextBool()) {
+        _spawnBlood(
+          x,
+          y,
+          _rnd.nextBool(),
+          count: 2,
+          stain: false,
+        );
+      }
+    }
+
+    // Đại ca tự vung giữa các đòn thật: mỗi cú cũng có vệt chém + máu.
+    if (_koAt < 0 && size.x > 0 && _elapsed > 2200) {
+      final meIdx = (_elapsed / 460).floor();
+      if (meIdx != _autoMe) {
+        _autoMe = meIdx;
+        _fakeSlash(size.x * 0.56, size.y * 0.60,
+            toRight: true, mine: true);
+      }
+      final enIdx = (_elapsed / 510).floor();
+      if (enIdx != _autoEn) {
+        _autoEn = enIdx;
+        _fakeSlash(size.x * 0.40, size.y * 0.60,
+            toRight: false, mine: false);
       }
     }
 
@@ -549,6 +576,14 @@ class BrawlStage extends PositionComponent {
             ),
           );
         }
+        // Đòn đệm vẫn bắn máu lẫn vệt chém cho cảnh không khô.
+        _spawnBlood(
+          e.mine ? enemyX : myX,
+          size.y * 0.60,
+          e.mine,
+          count: 3,
+          stain: false,
+        );
         _lastHitSide = e.mine ? 'me' : 'enemy';
         _lastHitAt = _elapsed;
         continue;
@@ -668,7 +703,33 @@ class BrawlStage extends PositionComponent {
     }
   }
 
-  void _spawnBlood(double x, double y, bool toRight, {int count = 10}) {
+  /// Vệt chém + máu cho đòn không tính sát thương (đòn đệm, tự vung).
+  void _fakeSlash(
+    double x,
+    double y, {
+    required bool toRight,
+    required bool mine,
+  }) {
+    final color = mine ? Colors.white : GH.red;
+    _arcs.add(
+      _Arc(
+        x - (toRight ? 26 : -26),
+        y + 6,
+        !toRight,
+        color.withValues(alpha: 0.4),
+      ),
+    );
+    _spawnSparks(x, y, color.withValues(alpha: 0.45), count: 3);
+    _spawnBlood(x, y, toRight, count: 3, stain: false);
+  }
+
+  void _spawnBlood(
+    double x,
+    double y,
+    bool toRight, {
+    int count = 10,
+    bool stain = true,
+  }) {
     for (var i = 0; i < count; i++) {
       _blood.add(
         _Drop(
@@ -681,6 +742,7 @@ class BrawlStage extends PositionComponent {
         ),
       );
     }
+    if (!stain) return;
     if (_splats.length >= 40) _splats.removeAt(0);
     _splats.add(
       _Splat(
@@ -772,20 +834,29 @@ class BrawlStage extends PositionComponent {
       );
     }
 
-    final period = 1100.0 + _noise(i, 6) * 1500.0;
-    final cyc =
-        (((_elapsed - introEnd + _noise(i, 7) * period) % period) / period);
-    final swing = math.sin(math.pi * (cyc / 0.55).clamp(0.0, 1.0));
-    final cx = spot + (mine ? 1 : -1) * swing * (0.012 + _noise(i, 8) * 0.03);
+    // Mỗi cú vung 190ms, nghỉ 190–370ms tuỳ đứa — đánh đều tay, không quá nhanh.
+    const attackMs = 190.0;
+    final period = 380.0 + _noise(i, 6) * 180.0;
+    final since =
+        (_elapsed - introEnd + _noise(i, 7) * period) % period;
+    final attacking = since < attackMs;
+    final swing = attacking ? math.sin(math.pi * since / attackMs) : 0.0;
+    final cx = spot + (mine ? 1 : -1) * swing * (0.02 + _noise(i, 8) * 0.04);
     final String state;
-    if (cyc < 0.42) {
+    if (attacking) {
       state = 'atk';
-    } else if (cyc < 0.52 && _noise(i, 9) > 0.5) {
+    } else if (_noise(i, 9) > 0.6) {
       state = 'hurt';
     } else {
       state = 'idle';
     }
-    return (cx: cx, cy: cy, hh: hh, state: state, cyc: cyc);
+    return (
+      cx: cx,
+      cy: cy,
+      hh: hh,
+      state: state,
+      cyc: attacking ? since / attackMs : 0,
+    );
   }
 
   String _minionFrame(String state, double cyc, int i) {
@@ -793,7 +864,7 @@ class BrawlStage extends PositionComponent {
       case 'run':
         return 'run${(((_elapsed / 110) + i * 2) % 4).floor() + 1}';
       case 'atk':
-        return cyc < 0.22 ? 'atk1' : 'atk2';
+        return cyc < 0.5 ? 'atk1' : 'atk2';
       case 'hurt':
         return 'hurt';
       case 'flee':
@@ -824,6 +895,15 @@ class BrawlStage extends PositionComponent {
       final k = best.kind == 'run' ? t * t * (3 - 2 * t) : math.sin(math.pi * t);
       dash = best.dashFrom + (best.dashTo - best.dashFrom) * k;
       state = best.kind;
+    } else if (!(mine && game.myGun) && _elapsed > 2200) {
+      // Không có đòn thật thì vẫn vung tay, nhưng có nhịp thở giữa các cú.
+      final cycle = mine ? 460.0 : 510.0;
+      final ph = _elapsed % cycle;
+      if (ph < 190) {
+        t = ph / 190;
+        state = 'atk';
+        dash += 0.10 * math.sin(math.pi * t);
+      }
     }
     if (_koTime > 0) {
       final loser = _koSide == (mine ? 'me' : 'enemy');

@@ -122,6 +122,18 @@ class GameController extends ChangeNotifier {
         state = await api.recruit();
       });
 
+  Future<void> raiseRacket(String businessId) => _guard(() async {
+        state = await api.raiseRacket(businessId);
+      });
+
+  Future<void> recruitGeneral() => _guard(() async {
+        state = await api.recruitGeneral();
+      });
+
+  Future<void> trainGeneral(String id) => _guard(() async {
+        state = await api.trainGeneral(id);
+      });
+
   Future<void> recruitMinions(int count) => _guard(() async {
         state = await api.recruitMinions(count);
       });

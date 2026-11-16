@@ -42,6 +42,11 @@ class _MapScreenState extends State<MapScreen> {
                   if (s != null)
                     Text('${s.ownedCount}/${s.maxOwned} ô',
                         style: labelStyle(size: 11)),
+                  if (s != null && s.districtHeld > 0)
+                    Text(
+                      ' · ${s.districtHeld} quận +${(s.districtBonus * 100).round()}%',
+                      style: labelStyle(size: 11, color: GH.gold),
+                    ),
                   const Spacer(),
                   IconButton(
                     onPressed: () =>

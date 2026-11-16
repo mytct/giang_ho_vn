@@ -1287,6 +1287,130 @@ func TestMinionRecruitGearHeal(t *testing.T) {
 	}
 }
 
+func TestDevUnlimitedSkipsAttackLimits(t *testing.T) {
+	st, tok, p := newTestPlayer(t)
+	p.DevUnlimited = true
+	p.Heat = 100
+	p.Money = 1_000_000
+	for i := 0; i < DistrictSize; i++ {
+		p.Owned[i] = true
+		st.territories[i].OwnerID = "p:" + p.ID
+	}
+	if _, _, err := st.Attack(tok, 12); err != nil {
+		t.Fatalf("dev unlimited phải bỏ qua cooldown/nóng/trần ô: %v", err)
+	}
+	if _, _, err := st.Attack(tok, 13); err != nil {
+		t.Fatalf("phải đánh liên tiếp được: %v", err)
+	}
+}
+
+func TestUpkeepDesertion(t *testing.T) {
+	st, tok, p := newTestPlayer(t)
+	p.Money = 0
+	p.Crew = 100
+	p.LastAccrual = time.Now().Add(-time.Minute)
+	if _, err := st.State(tok); err != nil {
+		t.Fatal(err)
+	}
+	if p.Crew != 99 {
+		t.Fatalf("thiếu lương phải mất 1 đàn em, còn %d", p.Crew)
+	}
+}
+
+func TestRacketRaisesIncomeAndHeat(t *testing.T) {
+	st, tok, p := newTestPlayer(t)
+	p.Money = 100000
+	before := p.BusinessRate(BusinessDefs[0])
+	if _, err := st.RaiseRacket(tok, "karaoke"); err != nil {
+		t.Fatal(err)
+	}
+	if p.Racket["karaoke"] != 1 {
+		t.Fatalf("bảo kê phải lên cấp 1, got %d", p.Racket["karaoke"])
+	}
+	if p.BusinessRate(BusinessDefs[0]) <= before {
+		t.Fatal("bảo kê phải tăng thu nhập")
+	}
+	if p.Heat < 5 {
+		t.Fatalf("dằn mặt phải tăng độ nóng, got %d", p.Heat)
+	}
+}
+
+func TestDistrictBonusWhenHoldingWholeDistrict(t *testing.T) {
+	st, _, p := newTestPlayer(t)
+	p.Money = 100000
+	for i := 0; i < DistrictSize; i++ {
+		st.territories[i].OwnerID = "p:" + p.ID
+		p.Owned[i] = true
+	}
+	st.recalcLandLocked(p)
+	if p.DistrictHeld != 1 || p.DistrictBonus < 0.099 {
+		t.Fatalf("giữ trọn quận phải +10%%, held=%d bonus=%v", p.DistrictHeld, p.DistrictBonus)
+	}
+	before := p.BusinessRate(BusinessDefs[0])
+	p.DistrictBonus = 0
+	plain := p.BusinessRate(BusinessDefs[0])
+	if before <= plain {
+		t.Fatalf("bonus quận không vào thu nhập: %v vs %v", before, plain)
+	}
+}
+
+func TestGeneralsAndGangChat(t *testing.T) {
+	st, tok, p := newTestPlayer(t)
+	p.Money = 100000
+	p.Uy = 5000
+	if _, err := st.RecruitGeneral(tok); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Generals) != 1 || p.GeneralPower() <= 0 {
+		t.Fatalf("mời tướng hỏng: %+v", p.Generals)
+	}
+	gen := p.Generals[0]
+	if _, err := st.TrainGeneral(tok, gen.ID); err != nil {
+		t.Fatal(err)
+	}
+	if p.Generals[0].Level != 2 {
+		t.Fatalf("huấn luyện không lên cấp: %d", p.Generals[0].Level)
+	}
+
+	if _, err := st.CreateGang(tok, "Băng Test"); err != nil {
+		t.Fatal(err)
+	}
+	g := st.gangs[p.GangID]
+	g.Treasury = 900
+	p.Money = 0
+	chat, err := st.SendGangChat(tok, "anh em điểm danh")
+	if err != nil || len(chat.Messages) != 1 {
+		t.Fatalf("chat băng: %v %+v", err, chat)
+	}
+	if _, err := st.PayoutTreasury(tok, 900); err != nil {
+		t.Fatal(err)
+	}
+	if p.Money != 900 || g.Treasury != 0 {
+		t.Fatalf("chia quỹ sai: money=%d treasury=%d", p.Money, g.Treasury)
+	}
+	if chat := st.gangs[p.GangID]; len(chat.Log) == 0 {
+		t.Fatal("chia quỹ phải ghi log")
+	}
+}
+
+func TestNPCRetakesTerritory(t *testing.T) {
+	st, _, p := newTestPlayer(t)
+	st.territories[0].OwnerID = "p:" + p.ID
+	st.territories[0].OwnerName = p.Name
+	p.Owned[0] = true
+	st.recalcLandLocked(p)
+	st.npcRaids = []npcRaid{{
+		GangID: "npc:ran", TargetID: "p:" + p.ID, TerritoryID: 0,
+		At: time.Now().Add(-time.Minute),
+	}}
+	st.npcTick = time.Now().Add(-2 * time.Minute)
+	st.tickNPCsLocked(time.Now())
+	if st.territories[0].OwnerID != "npc:ran" || p.Owned[0] {
+		t.Fatalf("NPC phải đòi lại đất: owner=%s owned=%v",
+			st.territories[0].OwnerID, p.Owned[0])
+	}
+}
+
 func TestBrawlVarianceAndDefenderSkills(t *testing.T) {
 	firstHits := map[int]bool{}
 	for i := 0; i < 30; i++ {

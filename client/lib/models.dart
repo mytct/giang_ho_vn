@@ -490,6 +490,107 @@ class Mission {
       );
 }
 
+class GeneralInfo {
+  const GeneralInfo({
+    required this.id,
+    required this.name,
+    required this.level,
+    required this.power,
+    required this.trainCost,
+    required this.skillA,
+    required this.skillB,
+  });
+
+  final String id;
+  final String name;
+  final int level;
+  final int power;
+  final int trainCost;
+  final CrewSkill skillA;
+  final CrewSkill skillB;
+
+  factory GeneralInfo.fromJson(Map<String, dynamic> j) => GeneralInfo(
+        id: j['id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        level: asInt(j['level']),
+        power: asInt(j['power']),
+        trainCost: asInt(j['trainCost']),
+        skillA: CrewSkill.fromJson(
+            (j['skillA'] as Map?)?.cast<String, dynamic>() ?? {}),
+        skillB: CrewSkill.fromJson(
+            (j['skillB'] as Map?)?.cast<String, dynamic>() ?? {}),
+      );
+}
+
+class GangMessage {
+  const GangMessage({
+    required this.at,
+    required this.name,
+    required this.role,
+    required this.text,
+  });
+
+  final int at;
+  final String name;
+  final String role;
+  final String text;
+
+  factory GangMessage.fromJson(Map<String, dynamic> j) => GangMessage(
+        at: asInt(j['at']),
+        name: j['name'] as String? ?? '',
+        role: j['role'] as String? ?? 'member',
+        text: j['text'] as String? ?? '',
+      );
+}
+
+class GangMemberInfo {
+  const GangMemberInfo({
+    required this.id,
+    required this.name,
+    required this.role,
+  });
+
+  final String id;
+  final String name;
+  final String role;
+
+  factory GangMemberInfo.fromJson(Map<String, dynamic> j) => GangMemberInfo(
+        id: j['id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        role: j['role'] as String? ?? 'member',
+      );
+}
+
+class GangChatInfo {
+  const GangChatInfo({
+    required this.messages,
+    required this.members,
+    required this.myRole,
+    required this.treasury,
+    required this.log,
+  });
+
+  final List<GangMessage> messages;
+  final List<GangMemberInfo> members;
+  final String myRole;
+  final int treasury;
+  final List<String> log;
+
+  factory GangChatInfo.fromJson(Map<String, dynamic> j) => GangChatInfo(
+        messages: (j['messages'] as List? ?? [])
+            .map((e) => GangMessage.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(),
+        members: (j['members'] as List? ?? [])
+            .map((e) => GangMemberInfo.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(),
+        myRole: j['myRole'] as String? ?? 'member',
+        treasury: asInt(j['treasury']),
+        log: (j['log'] as List? ?? [])
+            .map((e) => (e as Map)['text'] as String? ?? '')
+            .toList(),
+      );
+}
+
 class BusinessInfo {
   const BusinessInfo({
     required this.id,
@@ -500,6 +601,8 @@ class BusinessInfo {
     required this.upgradeCost,
     required this.unlocked,
     required this.unlockName,
+    this.racket = 0,
+    this.racketCost = 0,
   });
 
   final String id;
@@ -510,6 +613,8 @@ class BusinessInfo {
   final int upgradeCost;
   final bool unlocked;
   final String unlockName;
+  final int racket;
+  final int racketCost;
 
   factory BusinessInfo.fromJson(Map<String, dynamic> j) => BusinessInfo(
         id: j['id'] as String? ?? '',
@@ -520,6 +625,8 @@ class BusinessInfo {
         upgradeCost: asInt(j['upgradeCost']),
         unlocked: j['unlocked'] as bool? ?? false,
         unlockName: j['unlockName'] as String? ?? '',
+        racket: asInt(j['racket']),
+        racketCost: asInt(j['racketCost']),
       );
 }
 
@@ -579,6 +686,12 @@ class PlayerState {
     required this.minionHealCost,
     required this.maxMinions,
     required this.minionGear,
+    this.upkeep = 0,
+    this.districtHeld = 0,
+    this.districtBonus = 0,
+    this.generals = const [],
+    this.generalCost = 0,
+    this.generalPower = 0,
     required this.bounty,
     required this.landIncome,
     required this.prestige,
@@ -641,6 +754,12 @@ class PlayerState {
   final int minionHealCost;
   final int maxMinions;
   final List<MinionGearInfo> minionGear;
+  final double upkeep;
+  final int districtHeld;
+  final double districtBonus;
+  final List<GeneralInfo> generals;
+  final int generalCost;
+  final int generalPower;
   final int bounty;
   final double landIncome;
   final int prestige;
@@ -731,6 +850,14 @@ class PlayerState {
         minionGear: (j['minionGear'] as List? ?? [])
             .map((e) => MinionGearInfo.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
+        upkeep: asDouble(j['upkeep']),
+        districtHeld: asInt(j['districtHeld']),
+        districtBonus: asDouble(j['districtBonus']),
+        generals: (j['generals'] as List? ?? [])
+            .map((e) => GeneralInfo.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(),
+        generalCost: asInt(j['generalCost']),
+        generalPower: asInt(j['generalPower']),
         bounty: asInt(j['bounty']),
         landIncome: asDouble(j['landIncome']),
         prestige: asInt(j['prestige']),

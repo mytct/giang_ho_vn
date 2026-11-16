@@ -93,25 +93,62 @@ type SkillEffects struct {
 	UyBonus    int64
 }
 
+func (e *SkillEffects) merge(def *SkillDef) {
+	e.DmgMul += def.DmgMul
+	e.HpAdd += def.HpAdd
+	e.UyBonus += def.UyBonus
+	e.FirstHitX2 = e.FirstHitX2 || def.FirstHitX2
+	if def.CritEvery > 0 && (e.CritEvery == 0 || def.CritEvery < e.CritEvery) {
+		e.CritEvery = def.CritEvery
+	}
+	if def.DodgeEvery > 0 && (e.DodgeEvery == 0 || def.DodgeEvery < e.DodgeEvery) {
+		e.DodgeEvery = def.DodgeEvery
+	}
+}
+
 func (p *Player) SkillEffects() SkillEffects {
 	var e SkillEffects
 	for _, id := range p.CrewSkills {
-		def := SkillByID(id)
-		if def == nil {
-			continue
-		}
-		e.DmgMul += def.DmgMul
-		e.HpAdd += def.HpAdd
-		e.UyBonus += def.UyBonus
-		e.FirstHitX2 = e.FirstHitX2 || def.FirstHitX2
-		if def.CritEvery > 0 && (e.CritEvery == 0 || def.CritEvery < e.CritEvery) {
-			e.CritEvery = def.CritEvery
-		}
-		if def.DodgeEvery > 0 && (e.DodgeEvery == 0 || def.DodgeEvery < e.DodgeEvery) {
-			e.DodgeEvery = def.DodgeEvery
+		if def := SkillByID(id); def != nil {
+			e.merge(def)
 		}
 	}
 	return e
+}
+
+// AllEffects: kỹ năng đàn em + tướng, dùng chung cho mọi trận.
+func (p *Player) AllEffects() SkillEffects {
+	e := p.SkillEffects()
+	for _, g := range p.Generals {
+		for _, id := range []string{g.SkillA, g.SkillB} {
+			if def := SkillByID(id); def != nil {
+				e.merge(def)
+			}
+		}
+	}
+	return e
+}
+
+func (p *Player) GeneralPower() int {
+	total := 0
+	for _, g := range p.Generals {
+		total += 6 + g.Level*3
+	}
+	return total
+}
+
+func (p *Player) GeneralHP() int {
+	total := 0
+	for _, g := range p.Generals {
+		total += 20 + g.Level*5
+	}
+	return total
+}
+
+// UpkeepPerSec: quân và tướng ăn lương mỗi giây, ăn hết tiền thì bỏ đi.
+func (p *Player) UpkeepPerSec() float64 {
+	return float64(p.Crew)*1.5 + float64(p.MinionHealthy())*0.3 +
+		float64(len(p.Generals))*3
 }
 
 type ItemDef struct {
@@ -215,6 +252,13 @@ var BusinessDefs = []BusinessDef{
 	{"doxe", "Xưởng Độ Xe", "X", 18, 2},
 	{"sanchim", "Sân Chim", "S", 40, 3},
 }
+
+// 24 ô chia 4 quận, mỗi quận 6 ô liền nhau.
+const DistrictSize = 6
+
+var DistrictNames = []string{"Hẻm 12", "Chợ Hòa Bình", "Bến Xe", "Sài Gòn"}
+
+func DistrictOf(id int) int { return id / DistrictSize }
 
 type Territory struct {
 	ID          int    `json:"id"`
@@ -336,7 +380,9 @@ func (p *Player) BusinessRate(def BusinessDef) float64 {
 	if lvl == 0 {
 		return 0
 	}
-	return float64(def.Base) * float64(lvl) * (1 + float64(p.Uy)/4000) * p.TerritoryMultiplier()
+	racket := 1 + 0.15*float64(p.Racket[def.ID])
+	return float64(def.Base) * float64(lvl) * (1 + float64(p.Uy)/4000) *
+		p.TerritoryMultiplier() * (1 + p.DistrictBonus) * racket
 }
 
 func (p *Player) RatePerSec() float64 {
@@ -354,7 +400,7 @@ func (p *Player) RatePerSec() float64 {
 func (p *Player) Power() int {
 	r := RankFor(p.Uy)
 	return p.Weapon().Dmg + p.Crew*6 + (r.Level+1)*10 + int(p.Uy/300) +
-		p.BonusDmg() + p.BonusHP()/10 + p.MinionPower()
+		p.BonusDmg() + p.BonusHP()/10 + p.MinionPower() + p.GeneralPower()
 }
 
 func UpgradeCost(def BusinessDef, level int) int64 {

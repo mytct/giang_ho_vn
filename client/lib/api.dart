@@ -309,6 +309,47 @@ class ApiClient {
     );
   }
 
+  Future<PlayerState> raiseRacket(String id) async {
+    final data = await _send('POST', '/api/business/racket',
+        body: {'id': id, 'token': token});
+    return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
+  }
+
+  Future<PlayerState> recruitGeneral() async {
+    final data =
+        await _send('POST', '/api/general/recruit', body: {'token': token});
+    return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
+  }
+
+  Future<PlayerState> trainGeneral(String id) async {
+    final data = await _send('POST', '/api/general/train',
+        body: {'id': id, 'token': token});
+    return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
+  }
+
+  Future<GangChatInfo> gangChat() async {
+    final data = await _send('GET', '/api/gang/chat');
+    return GangChatInfo.fromJson(data);
+  }
+
+  Future<GangChatInfo> sendGangChat(String text) async {
+    final data = await _send('POST', '/api/gang/chat',
+        body: {'text': text, 'token': token});
+    return GangChatInfo.fromJson(data);
+  }
+
+  Future<GangChatInfo> promoteGangMember(String id) async {
+    final data = await _send('POST', '/api/gang/promote',
+        body: {'targetId': id, 'token': token});
+    return GangChatInfo.fromJson(data);
+  }
+
+  Future<GangChatInfo> payoutTreasury(int amount) async {
+    final data = await _send('POST', '/api/gang/payout',
+        body: {'amount': amount, 'token': token});
+    return GangChatInfo.fromJson(data);
+  }
+
   Future<PlayerState> upgradeGang(String kind) async {
     final data = await _send('POST', '/api/gang/upgrade',
         body: {'kind': kind, 'token': token});

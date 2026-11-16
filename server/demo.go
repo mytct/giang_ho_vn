@@ -74,6 +74,10 @@ func (s *Store) SeedDemo() map[string]string {
 	d, tokD := mkPlayer("Chuột Nhỏ", 2, 6000, 200, 1, 1, 0)
 	e, tokE := mkPlayer("Ó Đen", 5, 18000, 700, 2, 3, 1)
 	_, tokF := mkPlayer("Lính Lẻ", 2, 4000, 120, 0, 0, 0)
+	a.Racket = map[string]int{"karaoke": 1, "matxa": 1}
+	a.Generals = []General{
+		{ID: token(), Name: "Tám Ngón", Level: 3, SkillA: "dao", SkillB: "ne"},
+	}
 
 	gangA := mkGang("Băng Rắn Độc", a, b)
 	gangC := mkGang("Băng Cá Sấu", c)
@@ -167,6 +171,10 @@ func (s *Store) SeedDemo() map[string]string {
 	s.boss.Damage[e.ID] = 2200
 	s.boss.HP = s.boss.MaxHP - 9500
 
+	// Tài khoản demo được đánh thoải mái: bỏ cooldown, độ nóng, trần địa bàn.
+	for _, p := range s.players {
+		p.DevUnlimited = true
+	}
 	s.demoTokens = map[string]string{
 		"Đại Ca A":  tokA,
 		"Trùm C":    tokC,

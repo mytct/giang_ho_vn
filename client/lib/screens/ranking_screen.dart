@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../api.dart';
 import 'diplomacy_sheet.dart';
+import 'gang_chat_sheet.dart';
 import 'gang_treasury_sheet.dart';
 
 class RankingScreen extends StatelessWidget {
@@ -640,6 +641,22 @@ class _GangSection extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: labelStyle(
                                     size: 9.5, color: GH.muted),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () =>
+                                  showGangChatSheet(context, controller),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 6),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: GH.cyan.withValues(alpha: 0.14),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text('CHAT',
+                                    style: labelStyle(
+                                        size: 8, color: GH.cyan)),
                               ),
                             ),
                             GestureDetector(

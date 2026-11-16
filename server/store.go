@@ -59,6 +59,35 @@ type Player struct {
 	Chapter       int
 	LastAccrual   time.Time
 	LastBrawl     time.Time
+	Racket        map[string]int
+	Generals      []General
+	DevUnlimited  bool
+	UpkeepMsgAt   time.Time
+	DistrictCount [4]int
+	DistrictHeld  int
+	DistrictBonus float64
+}
+
+// General là tướng lĩnh: mỗi slot +lực, +máu, 2 kỹ năng; thua trận có thể chết.
+type General struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Level  int    `json:"level"`
+	SkillA string `json:"skillA"`
+	SkillB string `json:"skillB"`
+}
+
+type GangMsg struct {
+	ID   string `json:"id"`
+	At   int64  `json:"at"`
+	Name string `json:"name"`
+	Role string `json:"role"`
+	Text string `json:"text"`
+}
+
+type GangLog struct {
+	At   int64  `json:"at"`
+	Text string `json:"text"`
 }
 
 type Gang struct {
@@ -66,6 +95,9 @@ type Gang struct {
 	Name                string
 	LeaderID            string
 	Members             []string
+	Officers            []string
+	Chat                []GangMsg
+	Log                 []GangLog
 	Wars                map[string]time.Time
 	Allies              map[string]time.Time
 	TributeTo           string
@@ -220,6 +252,25 @@ const (
 	maxTributesPerGang = 2
 )
 
+// Băng NPC sống: mất đất thì kéo quân đòi lại.
+type npcRaid struct {
+	GangID      string
+	TargetID    string
+	TerritoryID int
+	At          time.Time
+}
+
+var npcGangs = map[string]string{
+	"npc:ran":   "Băng Rắn Độc",
+	"npc:ca":    "Băng Cá Sấu",
+	"npc:o":     "Băng Ó Đen",
+	"npc:chuot": "Băng Chuột Cống",
+}
+
+var npcPower = map[string]int{
+	"npc:ran": 200, "npc:ca": 170, "npc:o": 160, "npc:chuot": 140,
+}
+
 type Store struct {
 	mu          sync.Mutex
 	byToken     map[string]*Player
@@ -229,6 +280,8 @@ type Store struct {
 	boss        *Boss
 	demoSeeded  bool
 	demoTokens  map[string]string
+	npcRaids    []npcRaid
+	npcTick     time.Time
 }
 
 func NewStore() *Store {
@@ -238,6 +291,7 @@ func NewStore() *Store {
 		territories: NewTerritories(),
 		gangs:       map[string]*Gang{},
 		boss:        newBoss(time.Now()),
+		npcTick:     time.Now(),
 	}
 }
 
@@ -251,6 +305,8 @@ type BusinessView struct {
 	Unlocked     bool    `json:"unlocked"`
 	UnlockName   string  `json:"unlockName"`
 	UnlockAtRank int     `json:"unlockAtRank"`
+	Racket       int     `json:"racket"`
+	RacketCost   int64   `json:"racketCost"`
 }
 
 type CrewSkillView struct {
@@ -258,6 +314,46 @@ type CrewSkillView struct {
 	Name   string `json:"name"`
 	Desc   string `json:"desc"`
 	Rarity string `json:"rarity"`
+}
+
+type GeneralView struct {
+	ID        string        `json:"id"`
+	Name      string        `json:"name"`
+	Level     int           `json:"level"`
+	SkillA    CrewSkillView `json:"skillA"`
+	SkillB    CrewSkillView `json:"skillB"`
+	Power     int           `json:"power"`
+	TrainCost int64         `json:"trainCost"`
+}
+
+const maxGenerals = 3
+
+var generalNames = []string{
+	"Tám Ngón", "Mập Hẻm", "Cò Quay", "Bà Chị Hạnh", "Chú Bảy",
+	"Đầu Bạc", "Thằng Câm", "Ông Kẹ", "Cô Ba", "Tư Đen",
+}
+
+func skillView(id string) CrewSkillView {
+	if def := SkillByID(id); def != nil {
+		return CrewSkillView{ID: def.ID, Name: def.Name, Desc: def.Desc, Rarity: def.Rarity}
+	}
+	return CrewSkillView{}
+}
+
+func generalRecruitCost(count int) int64 { return 6000 + 3000*int64(count) }
+
+func generalTrainCost(level int) int64 { return 1200 * int64(level+1) }
+
+func generalViews(p *Player) []GeneralView {
+	out := make([]GeneralView, 0, len(p.Generals))
+	for _, g := range p.Generals {
+		out = append(out, GeneralView{
+			ID: g.ID, Name: g.Name, Level: g.Level,
+			SkillA: skillView(g.SkillA), SkillB: skillView(g.SkillB),
+			Power: 6 + g.Level*3, TrainCost: generalTrainCost(g.Level),
+		})
+	}
+	return out
 }
 
 type MissionView struct {
@@ -328,6 +424,12 @@ type StateView struct {
 	MinionHealCost    int64            `json:"minionHealCost"`
 	MaxMinions        int              `json:"maxMinions"`
 	MinionGear        []MinionGearView `json:"minionGear"`
+	Upkeep            float64          `json:"upkeep"`
+	DistrictHeld      int              `json:"districtHeld"`
+	DistrictBonus     float64          `json:"districtBonus"`
+	Generals          []GeneralView    `json:"generals"`
+	GeneralCost       int64            `json:"generalCost"`
+	GeneralPower      int              `json:"generalPower"`
 	Bounty            int64            `json:"bounty"`
 	LandIncome        float64          `json:"landIncome"`
 	Prestige          int              `json:"prestige"`
@@ -486,6 +588,7 @@ func (s *Store) Login(name string) (*Player, string, error) {
 		Items:        map[string]bool{},
 		Guards:       map[int]int{},
 		Gear:         map[string]int{},
+		Racket:       map[string]int{},
 		Formation:    "balanced",
 		HeatAt:       time.Now(),
 		SeasonKey:    time.Now().In(ictZone).Format("2006-01"),
@@ -772,6 +875,7 @@ func (s *Store) accrue(p *Player, now time.Time) {
 	p.rollDaily(now)
 	rollSeason(p, now)
 	s.rollContractLocked(p, now)
+	s.tickNPCsLocked(now)
 	if p.HeatAt.IsZero() {
 		p.HeatAt = now
 	}
@@ -809,7 +913,44 @@ func (s *Store) accrue(p *Player, now time.Time) {
 		}
 	}
 	p.Money += gain - tithe
+	if upkeep := int64(p.UpkeepPerSec() * elapsed.Seconds()); upkeep > 0 {
+		p.Money -= upkeep
+		if p.Money < 0 {
+			p.Money = 0
+			s.desertLocked(p, now)
+		}
+	}
 	p.LastAccrual = now
+}
+
+// desertLocked: hết tiền trả lương thì lính/đàn em bỏ đi.
+func (s *Store) desertLocked(p *Player, now time.Time) {
+	if now.Sub(p.UpkeepMsgAt) < 30*time.Second {
+		return
+	}
+	p.UpkeepMsgAt = now
+	if p.Minions > 0 {
+		lost := p.Minions / 10
+		if lost < 1 {
+			lost = 1
+		}
+		p.Minions -= lost
+		if p.Wounds > p.Minions {
+			p.Wounds = p.Minions
+		}
+		p.addInbox(InboxMsg{
+			ID: token(), Kind: "upkeep", At: now.Unix(),
+			Text: fmt.Sprintf("Hết tiền trả lương, %d lính bỏ đi", lost),
+		})
+		return
+	}
+	if p.Crew > 0 {
+		p.Crew--
+		p.addInbox(InboxMsg{
+			ID: token(), Kind: "upkeep", At: now.Unix(),
+			Text: "Hết tiền trả lương, 1 đàn em bỏ đi",
+		})
+	}
 }
 
 func XPNeed(level int) int64 {
@@ -897,7 +1038,16 @@ func businessView(p *Player, def BusinessDef) BusinessView {
 		Unlocked:     unlocked,
 		UnlockName:   Ranks[def.Unlock].Name,
 		UnlockAtRank: def.Unlock,
+		Racket:       p.Racket[def.ID],
+		RacketCost:   racketCost(p.Racket[def.ID]),
 	}
+}
+
+func racketCost(level int) int64 {
+	if level >= 3 {
+		return 0
+	}
+	return 400 * int64(level+1) * int64(level+1)
 }
 
 func (s *Store) stateLocked(p *Player) StateView {
@@ -965,6 +1115,12 @@ func (s *Store) stateLocked(p *Player) StateView {
 		MinionHealCost:    minionHealCost,
 		MaxMinions:        MaxMinions,
 		MinionGear:        minionGearViews(p),
+		Upkeep:            p.UpkeepPerSec(),
+		DistrictHeld:      p.DistrictHeld,
+		DistrictBonus:     p.DistrictBonus,
+		Generals:          generalViews(p),
+		GeneralCost:       generalRecruitCost(len(p.Generals)),
+		GeneralPower:      p.GeneralPower(),
 		Bounty:            p.Bounty,
 		LandIncome:        p.LandIncome,
 		Prestige:          p.Prestige,
@@ -1205,6 +1361,9 @@ func (s *Store) defenseOf(t *Territory) int {
 				def = p
 			}
 			def += owner.Guards[t.ID]*10 + t.Level*8
+			if owner.DistrictCount[DistrictOf(t.ID)] >= DistrictSize {
+				def += 12
+			}
 		}
 	}
 	return def
@@ -1225,15 +1384,15 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 	if t.OwnerID == "p:"+p.ID {
 		return BrawlResult{}, StateView{}, errors.New("địa bàn này đã là của mày")
 	}
-	if time.Since(p.LastBrawl) < 2*time.Second {
+	if !p.DevUnlimited && time.Since(p.LastBrawl) < 2*time.Second {
 		return BrawlResult{}, StateView{}, errors.New("từ từ, thở đã")
 	}
-	if p.Heat >= 80 {
+	if !p.DevUnlimited && p.Heat >= 80 {
 		return BrawlResult{}, StateView{}, errors.New("cớm đang để ý, đút lót trước rồi hẵng chém")
 	}
 
 	maxOwned := MaxTerritories(RankFor(p.Uy).Level)
-	if p.OwnedCount() >= maxOwned {
+	if !p.DevUnlimited && p.OwnedCount() >= maxOwned {
 		return BrawlResult{}, StateView{}, fmt.Errorf("cấp %s chỉ giữ được %d địa bàn, lên bậc rồi tính", RankFor(p.Uy).Name, maxOwned)
 	}
 	var defender *Player
@@ -1257,7 +1416,7 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 		}
 		atWar := s.atWarLocked(p, defender)
 		if defender != nil && !atWar {
-			if defender.ShieldUntil.After(time.Now()) {
+			if !p.DevUnlimited && defender.ShieldUntil.After(time.Now()) {
 				return BrawlResult{}, StateView{}, errors.New("chủ địa bàn đang có khiên, để mai tính")
 			}
 			if defender.Uy < 300 && p.Uy >= 2000 {
@@ -1289,8 +1448,9 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 	if g := s.gangs[p.GangID]; g != nil && g.BoostUntil.After(time.Now()) {
 		power = power * 11 / 10
 	}
-	eff := p.SkillEffects()
-	hpMe := 150 + p.AvailableCrew()*20 + eff.HpAdd + p.BonusHP() + p.MinionHealthy()/4
+	eff := p.AllEffects()
+	hpMe := 150 + p.AvailableCrew()*20 + eff.HpAdd + p.BonusHP() +
+		p.MinionHealthy()/4 + p.GeneralHP()
 	myHitDmg := int(float64(power/2+4) * (1 + eff.DmgMul))
 	critEvery := eff.CritEvery
 	if critEvery == 0 {
@@ -1367,10 +1527,18 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 		}
 		p.Money += res.Reward
 		p.addUy(res.UyGain)
+		prevOwner := t.OwnerID
 		t.OwnerID = "p:" + p.ID
 		t.OwnerName = p.Name
 		p.Owned[id] = true
 		s.recalcLandLocked(p)
+		// Băng NPC nhớ mặt, 30–60 phút nữa kéo quân đòi lại.
+		if _, npc := npcGangs[prevOwner]; npc && len(s.npcRaids) < 12 {
+			s.npcRaids = append(s.npcRaids, npcRaid{
+				GangID: prevOwner, TargetID: "p:" + p.ID, TerritoryID: id,
+				At: time.Now().Add(time.Duration(30+mrand.Intn(31)) * time.Minute),
+			})
+		}
 		if defender != nil {
 			delete(defender.Owned, id)
 			s.recalcLandLocked(defender)
@@ -1438,6 +1606,16 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 			p.Heat = 100
 		}
 		p.HeatAt = time.Now()
+		// Thua trận thì tướng có thể bỏ xác.
+		if len(p.Generals) > 0 && mrand.Intn(4) == 0 {
+			i := mrand.Intn(len(p.Generals))
+			dead := p.Generals[i]
+			p.Generals = append(p.Generals[:i], p.Generals[i+1:]...)
+			p.addInbox(InboxMsg{
+				ID: token(), Kind: "general", At: time.Now().Unix(),
+				Text: fmt.Sprintf("%s bỏ xác ngoài hẻm, mất một tướng", dead.Name),
+			})
+		}
 	}
 	return res, s.stateLocked(p), nil
 }
@@ -2538,7 +2716,360 @@ func (s *Store) UpgradeGang(tok, kind string) (StateView, error) {
 	default:
 		return StateView{}, errors.New("loại nâng cấp không hợp lệ")
 	}
+	g.logLocked(fmt.Sprintf("%s tiêu quỹ: %s", p.Name, kind))
 	return s.stateLocked(p), nil
+}
+
+// RaiseRacket: dằn mặt quán để ăn thêm 15% mỗi cấp, đổi lại tăng độ nóng.
+func (s *Store) RaiseRacket(tok, id string) (StateView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return StateView{}, err
+	}
+	s.accrue(p, time.Now())
+	if p.Levels[id] <= 0 {
+		return StateView{}, errors.New("quán này chưa mở")
+	}
+	level := p.Racket[id]
+	if level >= 3 {
+		return StateView{}, errors.New("quán này đã bảo kê tối đa")
+	}
+	cost := racketCost(level)
+	if p.Money < cost {
+		return StateView{}, errors.New("không đủ tiền dằn mặt")
+	}
+	p.Money -= cost
+	if p.Racket == nil {
+		p.Racket = map[string]int{}
+	}
+	p.Racket[id] = level + 1
+	p.Heat += 5
+	if p.Heat > 100 {
+		p.Heat = 100
+	}
+	p.HeatAt = time.Now()
+	return s.stateLocked(p), nil
+}
+
+func (s *Store) RecruitGeneral(tok string) (StateView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return StateView{}, err
+	}
+	s.accrue(p, time.Now())
+	if len(p.Generals) >= maxGenerals {
+		return StateView{}, errors.New("chỉ nuôi được 3 tướng")
+	}
+	cost := generalRecruitCost(len(p.Generals))
+	if p.Money < cost {
+		return StateView{}, errors.New("không đủ tiền mời tướng")
+	}
+	p.Money -= cost
+	name := generalNames[mrand.Intn(len(generalNames))]
+	for tries := 0; tries < 10; tries++ {
+		used := false
+		for _, g := range p.Generals {
+			if g.Name == name {
+				used = true
+			}
+		}
+		if !used {
+			break
+		}
+		name = generalNames[mrand.Intn(len(generalNames))]
+	}
+	a := SkillDefs[mrand.Intn(len(SkillDefs))]
+	b := SkillDefs[mrand.Intn(len(SkillDefs))]
+	for b.ID == a.ID {
+		b = SkillDefs[mrand.Intn(len(SkillDefs))]
+	}
+	p.Generals = append(p.Generals, General{
+		ID: token(), Name: name, Level: 1, SkillA: a.ID, SkillB: b.ID,
+	})
+	return s.stateLocked(p), nil
+}
+
+func (s *Store) TrainGeneral(tok, id string) (StateView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return StateView{}, err
+	}
+	s.accrue(p, time.Now())
+	for i := range p.Generals {
+		g := &p.Generals[i]
+		if g.ID != id {
+			continue
+		}
+		if g.Level >= 10 {
+			return StateView{}, errors.New("tướng đã đạt cấp tối đa")
+		}
+		cost := generalTrainCost(g.Level)
+		if p.Money < cost {
+			return StateView{}, errors.New("không đủ tiền huấn luyện")
+		}
+		p.Money -= cost
+		g.Level++
+		return s.stateLocked(p), nil
+	}
+	return StateView{}, errors.New("không có tướng này")
+}
+
+// tickNPCsLocked: băng NPC kéo quân đòi lại đất sau khi bị chiếm,
+// và thỉnh thoảng chiếm ô trống.
+func (s *Store) tickNPCsLocked(now time.Time) {
+	if now.Sub(s.npcTick) < time.Minute {
+		return
+	}
+	s.npcTick = now
+	keep := make([]npcRaid, 0, len(s.npcRaids))
+	for _, r := range s.npcRaids {
+		if r.At.After(now) {
+			keep = append(keep, r)
+			continue
+		}
+		if r.TerritoryID < 0 || r.TerritoryID >= len(s.territories) {
+			continue
+		}
+		t := s.territories[r.TerritoryID]
+		if t.OwnerID != r.TargetID {
+			continue
+		}
+		owner := s.players[strings.TrimPrefix(r.TargetID, "p:")]
+		if owner == nil {
+			continue
+		}
+		def := s.defenseOf(t)
+		if float64(def) < float64(npcPower[r.GangID])*(0.8+mrand.Float64()*0.6) {
+			t.OwnerID = r.GangID
+			t.OwnerName = npcGangs[r.GangID]
+			delete(owner.Owned, r.TerritoryID)
+			s.recalcLandLocked(owner)
+			owner.addInbox(InboxMsg{
+				ID: token(), Kind: "npc", At: now.Unix(), TerritoryID: r.TerritoryID,
+				Text: fmt.Sprintf("%s kéo quân đòi lại %s. Đất đã mất.",
+					npcGangs[r.GangID], t.Name),
+			})
+		} else {
+			owner.addInbox(InboxMsg{
+				ID: token(), Kind: "npc", At: now.Unix(), TerritoryID: r.TerritoryID,
+				Text: fmt.Sprintf("%s kéo tới đòi %s nhưng bị đánh lui.",
+					npcGangs[r.GangID], t.Name),
+			})
+		}
+	}
+	s.npcRaids = keep
+	if mrand.Intn(100) < 8 {
+		ids := make([]string, 0, len(npcGangs))
+		for id := range npcGangs {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, t := range s.territories {
+			if t.OwnerID != "" {
+				continue
+			}
+			gid := ids[mrand.Intn(len(ids))]
+			t.OwnerID = gid
+			t.OwnerName = npcGangs[gid]
+			break
+		}
+	}
+}
+
+type GangMemberView struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role"`
+}
+
+type GangChatView struct {
+	Messages []GangMsg        `json:"messages"`
+	Members  []GangMemberView `json:"members"`
+	MyRole   string           `json:"myRole"`
+	Treasury int64            `json:"treasury"`
+	Log      []GangLog        `json:"log"`
+}
+
+func gangRole(g *Gang, id string) string {
+	if g.LeaderID == id {
+		return "leader"
+	}
+	for _, o := range g.Officers {
+		if o == id {
+			return "officer"
+		}
+	}
+	return "member"
+}
+
+func (g *Gang) logLocked(text string) {
+	g.Log = append([]GangLog{{At: time.Now().Unix(), Text: text}}, g.Log...)
+	if len(g.Log) > 30 {
+		g.Log = g.Log[:30]
+	}
+}
+
+func (s *Store) gangChatLocked(p *Player) GangChatView {
+	g := s.gangs[p.GangID]
+	if g == nil {
+		return GangChatView{}
+	}
+	out := GangChatView{
+		Messages: g.Chat, MyRole: gangRole(g, p.ID),
+		Treasury: g.Treasury, Log: g.Log,
+	}
+	out.Members = make([]GangMemberView, 0, len(g.Members))
+	for _, id := range g.Members {
+		name := id
+		if m := s.players[id]; m != nil {
+			name = m.Name
+		}
+		out.Members = append(out.Members, GangMemberView{
+			ID: id, Name: name, Role: gangRole(g, id),
+		})
+	}
+	if out.Messages == nil {
+		out.Messages = []GangMsg{}
+	}
+	if out.Log == nil {
+		out.Log = []GangLog{}
+	}
+	return out
+}
+
+func (s *Store) GangChat(tok string) (GangChatView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return GangChatView{}, err
+	}
+	s.accrue(p, time.Now())
+	if p.GangID == "" {
+		return GangChatView{}, errors.New("mày chưa có băng")
+	}
+	return s.gangChatLocked(p), nil
+}
+
+func (s *Store) SendGangChat(tok, text string) (GangChatView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return GangChatView{}, err
+	}
+	s.accrue(p, time.Now())
+	g := s.gangs[p.GangID]
+	if g == nil {
+		return GangChatView{}, errors.New("mày chưa có băng")
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return GangChatView{}, errors.New("nói gì đi")
+	}
+	if utf8.RuneCountInString(text) > 200 {
+		return GangChatView{}, errors.New("nói ngắn thôi, tối đa 200 ký tự")
+	}
+	g.Chat = append(g.Chat, GangMsg{
+		ID: token(), At: time.Now().Unix(), Name: p.Name,
+		Role: gangRole(g, p.ID), Text: text,
+	})
+	if len(g.Chat) > 50 {
+		g.Chat = g.Chat[len(g.Chat)-50:]
+	}
+	return s.gangChatLocked(p), nil
+}
+
+func (s *Store) PromoteMember(tok, targetID string) (GangChatView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return GangChatView{}, err
+	}
+	s.accrue(p, time.Now())
+	g := s.gangs[p.GangID]
+	if g == nil {
+		return GangChatView{}, errors.New("mày chưa có băng")
+	}
+	if g.LeaderID != p.ID {
+		return GangChatView{}, errors.New("chỉ băng trưởng mới phong chức")
+	}
+	if targetID == p.ID {
+		return GangChatView{}, errors.New("mày là băng trưởng rồi")
+	}
+	found := false
+	for _, id := range g.Members {
+		if id == targetID {
+			found = true
+		}
+	}
+	if !found {
+		return GangChatView{}, errors.New("người này không ở trong băng")
+	}
+	for i, id := range g.Officers {
+		if id == targetID {
+			g.Officers = append(g.Officers[:i], g.Officers[i+1:]...)
+			g.logLocked(fmt.Sprintf("%s bị bãi chức phó băng", s.playerName(targetID)))
+			return s.gangChatLocked(p), nil
+		}
+	}
+	g.Officers = append(g.Officers, targetID)
+	g.logLocked(fmt.Sprintf("%s được phong phó băng", s.playerName(targetID)))
+	return s.gangChatLocked(p), nil
+}
+
+func (s *Store) playerName(id string) string {
+	if m := s.players[id]; m != nil {
+		return m.Name
+	}
+	return id
+}
+
+func (s *Store) PayoutTreasury(tok string, amount int64) (GangChatView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return GangChatView{}, err
+	}
+	s.accrue(p, time.Now())
+	g := s.gangs[p.GangID]
+	if g == nil {
+		return GangChatView{}, errors.New("mày chưa có băng")
+	}
+	if g.LeaderID != p.ID {
+		return GangChatView{}, errors.New("chỉ băng trưởng mới chia quỹ")
+	}
+	if amount <= 0 {
+		return GangChatView{}, errors.New("số tiền không hợp lệ")
+	}
+	if g.Treasury < amount {
+		return GangChatView{}, errors.New("quỹ băng không đủ")
+	}
+	share := amount / int64(len(g.Members))
+	if share <= 0 {
+		return GangChatView{}, errors.New("chia ra mỗi người không đủ 1đ")
+	}
+	g.Treasury -= share * int64(len(g.Members))
+	for _, id := range g.Members {
+		if m := s.players[id]; m != nil {
+			m.Money += share
+			m.addInbox(InboxMsg{
+				ID: token(), Kind: "gang", At: time.Now().Unix(),
+				Text: fmt.Sprintf("Băng %s chia quỹ: +%dđ", g.Name, share),
+			})
+		}
+	}
+	g.logLocked(fmt.Sprintf("%s chia quỹ %dđ (%dđ/người)",
+		p.Name, share*int64(len(g.Members)), share))
+	return s.gangChatLocked(p), nil
 }
 
 func (s *Store) guardSlotsLocked(p *Player) []GuardSlot {
@@ -2673,13 +3204,25 @@ func (s *Store) SetBounty(tok, targetID string, amount int64) (StateView, error)
 
 func (s *Store) recalcLandLocked(p *Player) {
 	total := 0.0
+	var counts [4]int
 	for id := range p.Owned {
 		if id >= 0 && id < len(s.territories) {
 			t := s.territories[id]
 			total += float64(t.Tax) * (1 + 0.2*float64(t.Level)) * 0.15
+			counts[DistrictOf(id)]++
 		}
 	}
 	p.LandIncome = total
+	// Giữ trọn cả quận (6 ô) = +10% thu nhập và +12 phòng thủ mỗi ô.
+	held := 0
+	for _, c := range counts {
+		if c >= DistrictSize {
+			held++
+		}
+	}
+	p.DistrictCount = counts
+	p.DistrictHeld = held
+	p.DistrictBonus = 0.1 * float64(held)
 }
 
 func (s *Store) UpgradeTerritory(tok string, territoryID int) (StateView, error) {
@@ -2762,13 +3305,13 @@ func (s *Store) FightChapter(tok string, index int) (BrawlResult, StateView, err
 	if p.OwnedCount() < c.NeedOwned || p.Uy < c.NeedUy {
 		return BrawlResult{}, StateView{}, errors.New("chưa đủ điều kiện mở chương")
 	}
-	eff := p.SkillEffects()
+	eff := p.AllEffects()
 	crewForFight := p.AvailableCrew()
 	power := p.Power() - p.GuardsTotal()*6
 	if power < 10 {
 		power = 10
 	}
-	hpMe := 150 + crewForFight*20 + eff.HpAdd + p.BonusHP()
+	hpMe := 150 + crewForFight*20 + eff.HpAdd + p.BonusHP() + p.GeneralHP()
 	myHitDmg := int(float64(power/2+4) * (1 + eff.DmgMul))
 	critEvery := eff.CritEvery
 	if critEvery == 0 {
@@ -2881,6 +3424,15 @@ func (s *Store) MaxAccount(tok string) (StateView, error) {
 	p.WeaponIdx = len(Weapons) - 1
 	p.Crew = 4
 	p.Minions = 24
+	p.Racket = map[string]int{"karaoke": 2, "matxa": 1}
+	p.DevUnlimited = true
+	p.Heat = 0
+	if len(p.Generals) == 0 {
+		p.Generals = []General{
+			{ID: token(), Name: "Tám Ngón", Level: 4, SkillA: "dao", SkillB: "ne"},
+			{ID: token(), Name: "Bà Chị Hạnh", Level: 2, SkillA: "satthu", SkillB: "trau"},
+		}
+	}
 	for _, b := range BusinessDefs {
 		p.Levels[b.ID] = 5
 	}
@@ -2902,6 +3454,23 @@ func (s *Store) MaxAccount(tok string) (StateView, error) {
 		ID: token(), Kind: "dev", At: time.Now().Unix(),
 		Text: "Tài khoản test đã được đẩy lên mức cao nhất: xong cốt truyện, đủ uy ra tù, 8 địa bàn.",
 	})
+	return s.stateLocked(p), nil
+}
+
+// SetDevUnlimited bật/tắt chế độ đánh thoải mái cho tài khoản test:
+// bỏ cooldown, độ nóng, trần địa bàn và khiên của mục tiêu.
+func (s *Store) SetDevUnlimited(tok string, on bool) (StateView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return StateView{}, err
+	}
+	s.accrue(p, time.Now())
+	p.DevUnlimited = on
+	if on {
+		p.Heat = 0
+	}
 	return s.stateLocked(p), nil
 }
 
