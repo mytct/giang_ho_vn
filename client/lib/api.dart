@@ -106,9 +106,12 @@ class ApiClient {
     );
   }
 
-  Future<PlayerState> upgrade(String businessId) async {
-    final data = await _send('POST', '/api/upgrade',
-        body: {'business': businessId, 'token': token});
+  Future<PlayerState> upgrade(String businessId, int region) async {
+    final data = await _send('POST', '/api/upgrade', body: {
+      'business': businessId,
+      'district': region,
+      'token': token,
+    });
     return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
   }
 
@@ -245,6 +248,12 @@ class ApiClient {
     return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
   }
 
+  Future<PlayerState> buildWork(int district, String work) async {
+    final data = await _send('POST', '/api/city/build',
+        body: {'district': district, 'work': work, 'token': token});
+    return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
+  }
+
   Future<(List<Chapter>, int)> campaign() async {
     final data = await _send('GET', '/api/campaign');
     final chapters = (data['chapters'] as List? ?? [])
@@ -267,9 +276,13 @@ class ApiClient {
     return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
   }
 
-  Future<PlayerState> assignGuard(int territory, int count) async {
-    final data = await _send('POST', '/api/crew/assign',
-        body: {'territory': territory, 'count': count, 'token': token});
+  Future<PlayerState> assignGuard(int territory, int crew, int minions) async {
+    final data = await _send('POST', '/api/crew/assign', body: {
+      'territory': territory,
+      'crew': crew,
+      'minions': minions,
+      'token': token,
+    });
     return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
   }
 

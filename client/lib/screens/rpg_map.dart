@@ -3,40 +3,62 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models.dart';
-import '../theme.dart';
 import '../scene/paint_utils.dart';
+import '../theme.dart';
+import 'vn_map_data.dart';
 
-const double _mapW = 1000;
-const double _mapH = 1250;
+const double _mapW = 900;
+const double _mapH = 1600;
 
-const int _districtSize = 6;
+const int _quanPerProvince = 12;
 
-const List<String> _districtNames = [
-  'HẺM 12',
-  'CHỢ HÒA BÌNH',
-  'BẾN XE',
-  'SÀI GÒN',
-];
+const Map<String, Color> _npcGangColors = {
+  'npc:ran': Color(0xFF3EE08F),
+  'npc:ca': Color(0xFF00E5D0),
+  'npc:o': Color(0xFF9B6BFF),
+  'npc:chuot': Color(0xFFB58A5A),
+};
 
-const List<Color> _districtTints = [
+const List<Color> _gangPalette = [
   Color(0xFFFF2E63),
   Color(0xFF00E5D0),
   Color(0xFF3EE08F),
   Color(0xFFFFC93C),
+  Color(0xFF9B6BFF),
+  Color(0xFFFF7A00),
+  Color(0xFF4DA3FF),
 ];
 
-/// 6 ô mỗi quận: 2 cột × 3 hàng, nằm gọn trong ô của quận đó.
-Offset _spotOf(int id) {
-  final d = id ~/ _districtSize;
-  final k = id % _districtSize;
-  final left = d % 2 == 0 ? 0.03 : 0.53;
-  final top = d < 2 ? 0.03 : 0.53;
-  final col = k % 2;
-  final row = k ~/ 2;
-  return Offset(left + 0.06 + col * 0.31, top + 0.08 + row * 0.125);
+String _groupOf(Territory t) =>
+    t.ownerGangId.isNotEmpty ? t.ownerGangId : t.ownerId;
+
+Color _groupColor(String key, String myGangId) {
+  if (key.isEmpty) return GH.muted;
+  final npc = _npcGangColors[key];
+  if (npc != null) return npc;
+  if (myGangId.isNotEmpty && key == myGangId) return GH.pink;
+  var h = 0;
+  for (final c in key.codeUnits) {
+    h = (h * 31 + c) & 0x7fffffff;
+  }
+  return _gangPalette[h % _gangPalette.length];
 }
 
-int _districtOf(int id) => id ~/ _districtSize;
+class _ProvinceInfo {
+  _ProvinceInfo({
+    required this.color,
+    required this.label,
+    required this.count,
+    required this.mine,
+    required this.quans,
+  });
+
+  final Color color;
+  final String label;
+  final int count;
+  final bool mine;
+  final List<Territory> quans;
+}
 
 class RpgMapView extends StatefulWidget {
   const RpgMapView({
@@ -44,13 +66,13 @@ class RpgMapView extends StatefulWidget {
     required this.territories,
     required this.myId,
     required this.myGangId,
-    required this.onTap,
+    required this.onTapProvince,
   });
 
   final List<Territory> territories;
   final String myId;
   final String myGangId;
-  final ValueChanged<Territory> onTap;
+  final ValueChanged<int> onTapProvince;
 
   @override
   State<RpgMapView> createState() => _RpgMapViewState();
@@ -60,21 +82,30 @@ class _RpgMapViewState extends State<RpgMapView> {
   final TransformationController _controller = TransformationController();
   Size _viewport = Size.zero;
   bool _fitted = false;
+  int _selected = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onTransform);
+  }
+
+  void _onTransform() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
+    _controller.removeListener(_onTransform);
     _controller.dispose();
     super.dispose();
   }
 
-  double get _scale => _controller.value.getMaxScaleOnAxis().clamp(0.3, 3.5);
+  double get _scale => _controller.value.getMaxScaleOnAxis().clamp(0.3, 6);
 
   void _fit() {
     if (_viewport.width <= 0) return;
-    final scale = math.min(
-          _viewport.width / _mapW,
-          _viewport.height / _mapH,
-        ) *
+    final scale = math.min(_viewport.width / _mapW, _viewport.height / _mapH) *
         0.97;
     _controller.value = Matrix4.identity()
       ..translateByDouble(
@@ -88,7 +119,7 @@ class _RpgMapViewState extends State<RpgMapView> {
 
   void _zoomBy(double factor) {
     final center = Offset(_viewport.width / 2, _viewport.height / 2);
-    final next = (_scale * factor).clamp(0.3, 3.5);
+    final next = (_scale * factor).clamp(0.3, 6.0);
     final applied = next / _scale;
     final zoom = Matrix4.identity()
       ..translateByDouble(center.dx, center.dy, 0, 1)
@@ -97,18 +128,45 @@ class _RpgMapViewState extends State<RpgMapView> {
     _controller.value = zoom * _controller.value;
   }
 
-  Set<int> _heldDistricts() {
-    final counts = <int, int>{};
+  List<_ProvinceInfo> _infos() {
+    final byProvince = <int, List<Territory>>{};
     for (final t in widget.territories) {
-      if (widget.myId.isNotEmpty && t.ownerId == 'p:${widget.myId}') {
-        final d = _districtOf(t.id);
-        counts[d] = (counts[d] ?? 0) + 1;
-      }
+      byProvince.putIfAbsent(t.provinceId, () => []).add(t);
     }
-    return {
-      for (final e in counts.entries)
-        if (e.value >= _districtSize) e.key,
-    };
+    final out = <_ProvinceInfo>[];
+    for (var i = 0; i < vnProvinces.length; i++) {
+      final quans = byProvince[i] ?? const <Territory>[];
+      final counts = <String, int>{};
+      final names = <String, String>{};
+      for (final t in quans) {
+        final key = _groupOf(t);
+        if (key.isEmpty) continue;
+        counts[key] = (counts[key] ?? 0) + 1;
+        names.putIfAbsent(key, () => t.ownerName);
+      }
+      if (counts.isEmpty) {
+        out.add(_ProvinceInfo(
+          color: GH.muted,
+          label: 'ĐẤT TRỐNG',
+          count: 0,
+          mine: false,
+          quans: quans,
+        ));
+        continue;
+      }
+      final top = counts.entries.reduce((a, b) => a.value >= b.value ? a : b);
+      final mine = quans.where((t) {
+        return widget.myId.isNotEmpty && t.ownerId == 'p:${widget.myId}';
+      }).length;
+      out.add(_ProvinceInfo(
+        color: _groupColor(top.key, widget.myGangId),
+        label: names[top.key] ?? '?',
+        count: top.value,
+        mine: mine >= _quanPerProvince,
+        quans: quans,
+      ));
+    }
+    return out;
   }
 
   @override
@@ -122,18 +180,15 @@ class _RpgMapViewState extends State<RpgMapView> {
             if (mounted) _fit();
           });
         }
-        final held = _heldDistricts();
+        final infos = _infos();
         return Stack(
           children: [
             Positioned.fill(
               child: DecoratedBox(
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   gradient: RadialGradient(
                     radius: 0.9,
-                    colors: [
-                      const Color(0xFF101822),
-                      const Color(0xFF05070A),
-                    ],
+                    colors: [Color(0xFF0B1420), Color(0xFF04060A)],
                   ),
                 ),
               ),
@@ -142,9 +197,9 @@ class _RpgMapViewState extends State<RpgMapView> {
               child: InteractiveViewer(
                 transformationController: _controller,
                 constrained: false,
-                boundaryMargin: const EdgeInsets.all(260),
+                boundaryMargin: const EdgeInsets.all(300),
                 minScale: 0.3,
-                maxScale: 3.5,
+                maxScale: 6,
                 child: Container(
                   width: _mapW,
                   height: _mapH,
@@ -158,23 +213,26 @@ class _RpgMapViewState extends State<RpgMapView> {
                     children: [
                       Positioned.fill(
                         child: CustomPaint(
-                          painter: _CityPainter(held: held),
+                          painter: _MapPainter(
+                            infos: infos,
+                            selected: _selected,
+                            showLabels: _scale > 0.62,
+                          ),
                         ),
                       ),
-                      for (var i = 0; i < widget.territories.length; i++)
-                        if (i < 24)
-                          Positioned(
-                            left: _spotOf(i).dx * _mapW - 50,
-                            top: _spotOf(i).dy * _mapH - 28,
-                            child: _MapSpot(
-                              territory: widget.territories[i],
-                              myId: widget.myId,
-                              myGangId: widget.myGangId,
-                              districtHeld: held.contains(_districtOf(i)),
-                              onTap: () =>
-                                  widget.onTap(widget.territories[i]),
-                            ),
+                      for (var i = 0; i < vnProvinces.length; i++)
+                        Positioned(
+                          left: vnProvinces[i].cx * _mapW - 22,
+                          top: vnProvinces[i].cy * _mapH - 22,
+                          child: _ProvinceBadge(
+                            info: infos[i],
+                            selected: _selected == i,
+                            onTap: () {
+                              setState(() => _selected = i);
+                              widget.onTapProvince(i);
+                            },
                           ),
+                        ),
                     ],
                   ),
                 ),
@@ -191,7 +249,7 @@ class _RpgMapViewState extends State<RpgMapView> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: GH.line),
                 ),
-                child: Text('Kéo để di chuyển · chụm 2 ngón để zoom',
+                child: Text('Chạm tỉnh để xem 12 quận · kéo & zoom',
                     style: labelStyle(size: 9)),
               ),
             ),
@@ -234,164 +292,76 @@ class _RpgMapViewState extends State<RpgMapView> {
   }
 }
 
-class _MapSpot extends StatelessWidget {
-  const _MapSpot({
-    required this.territory,
-    required this.myId,
-    required this.myGangId,
-    required this.districtHeld,
+class _ProvinceBadge extends StatelessWidget {
+  const _ProvinceBadge({
+    required this.info,
+    required this.selected,
     required this.onTap,
   });
 
-  final Territory territory;
-  final String myId;
-  final String myGangId;
-  final bool districtHeld;
+  final _ProvinceInfo info;
+  final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final t = territory;
-    final mine = myId.isNotEmpty && t.ownerId == 'p:$myId';
-    final neutral = t.ownerName.isEmpty;
-    final ally = !mine &&
-        !neutral &&
-        myGangId.isNotEmpty &&
-        t.ownerGangId == myGangId;
-    final color = mine
-        ? GH.pink
-        : (ally
-            ? GH.green
-            : (neutral
-                ? GH.muted
-                : (t.ownerGangId.isNotEmpty ? GH.gold : GH.cyan)));
-    final initial = neutral
+    final color = info.mine ? GH.gold : info.color;
+    final initial = info.label.trim().isEmpty
         ? '?'
-        : t.ownerName.trim().isEmpty
-            ? '?'
-            : t.ownerName.trim()[0].toUpperCase();
-
+        : info.label.trim()[0].toUpperCase();
     return GestureDetector(
       onTap: onTap,
-      child: SizedBox(
-        width: 100,
-        child: Column(
+      child: Container(
+        width: 44,
+        height: 44,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: const Color(0xD9080B10),
+          border: Border.all(
+            color: color,
+            width: selected ? 3 : 1.6,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: selected ? 0.55 : 0.25),
+              blurRadius: selected ? 16 : 8,
+            ),
+          ],
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
           children: [
-            SizedBox(
-              width: 56,
-              height: 56,
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [
-                          color.withValues(alpha: mine ? 0.32 : 0.14),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                  Container(
-                    width: 42,
-                    height: 42,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        center: const Alignment(-0.3, -0.4),
-                        colors: [
-                          color.withValues(alpha: 0.30),
-                          const Color(0xFF0C1016),
-                        ],
-                      ),
-                      border: Border.all(
-                        color: color,
-                        width: mine ? 2.4 : 1.4,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: color.withValues(alpha: mine ? 0.45 : 0.18),
-                          blurRadius: mine ? 16 : 8,
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      initial,
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  if (mine)
-                    Positioned(
-                      top: 0,
-                      right: 0,
-                      child: Container(
-                        width: 17,
-                        height: 17,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: GH.pink,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.black, width: 1.5),
-                        ),
-                        child: const Icon(Icons.person_rounded,
-                            size: 10, color: Colors.black),
-                      ),
-                    ),
-                  if (districtHeld)
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      child: Container(
-                        width: 17,
-                        height: 17,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: GH.gold,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.black, width: 1.5),
-                        ),
-                        child: const Icon(Icons.workspace_premium_rounded,
-                            size: 11, color: Colors.black),
-                      ),
-                    ),
-                ],
+            Text(
+              initial,
+              style: TextStyle(
+                color: color,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
               ),
             ),
-            const SizedBox(height: 3),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xF207090D),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: color.withValues(alpha: mine ? 0.8 : 0.42),
-                ),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black54, blurRadius: 5),
-                ],
-              ),
-              child: Text(
-                t.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 9,
-                  fontWeight: FontWeight.w800,
-                  color: GH.text,
+            if (info.count > 0)
+              Positioned(
+                bottom: -6,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: GH.red,
+                    borderRadius: BorderRadius.circular(3),
+                    border: Border.all(color: Colors.black, width: 1),
+                  ),
+                  child: Text(
+                    '${info.count}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -399,36 +369,79 @@ class _MapSpot extends StatelessWidget {
   }
 }
 
-class _CityPainter extends CustomPainter {
-  const _CityPainter({required this.held});
+class _MapPainter extends CustomPainter {
+  const _MapPainter({
+    required this.infos,
+    required this.selected,
+    required this.showLabels,
+  });
 
-  final Set<int> held;
+  final List<_ProvinceInfo> infos;
+  final int selected;
+  final bool showLabels;
 
   @override
   void paint(Canvas canvas, Size size) {
     final rnd = math.Random(7);
     final rect = Offset.zero & size;
-
     canvas.drawRect(
       rect,
       Paint()
         ..shader = const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF080A0E), Color(0xFF101820), Color(0xFF07090C)],
+          colors: [Color(0xFF061019), Color(0xFF0B1A24), Color(0xFF04080D)],
         ).createShader(rect),
     );
+    _sea(canvas, size, rnd);
 
-    _districtFog(canvas, size);
-    _river(canvas, size);
-    _avenues(canvas, size);
-    _blocks(canvas, size, rnd);
-    _roads(canvas, size);
-    _streetlights(canvas, size, rnd);
-    _districtPlates(canvas, size);
-    _neon(canvas, size, rnd);
+    for (var i = 0; i < vnProvinces.length; i++) {
+      final prov = vnProvinces[i];
+      final info = infos[i];
+      final color = info.mine ? GH.gold : info.color;
+      final paths = <Path>[];
+      for (final ring in prov.rings) {
+        if (ring.length < 3) continue;
+        final p = Path()
+          ..moveTo(ring[0].dx * size.width, ring[0].dy * size.height);
+        for (var k = 1; k < ring.length; k++) {
+          p.lineTo(ring[k].dx * size.width, ring[k].dy * size.height);
+        }
+        paths.add(p..close());
+      }
+      for (final path in paths) {
+        canvas.drawPath(
+          path,
+          Paint()
+            ..color = color.withValues(alpha: 0.10)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
+        );
+        canvas.drawPath(
+          path,
+          Paint()..color = color.withValues(alpha: info.count > 0 ? 0.34 : 0.12),
+        );
+        canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = selected == i ? 3.2 : 1.2
+            ..color = color.withValues(alpha: selected == i ? 1 : 0.7),
+        );
+      }
+      if (showLabels) {
+        paintText(
+          canvas,
+          prov.name.toUpperCase(),
+          Offset(prov.cx * size.width, prov.cy * size.height + 26),
+          size: 8,
+          color: Colors.white.withValues(alpha: 0.92),
+          weight: FontWeight.w900,
+          align: TextAlign.center,
+        );
+      }
+    }
+
     _grain(canvas, size, rnd);
-
     canvas.drawRect(
       rect,
       Paint()
@@ -439,303 +452,29 @@ class _CityPainter extends CustomPainter {
     );
   }
 
-  void _districtFog(Canvas c, Size size) {
-    for (var d = 0; d < 4; d++) {
-      final box = _districtBox(size, d);
-      c.drawRect(
-        box,
-        Paint()
-          ..color = (held.contains(d)
-                  ? const Color(0xFFFFC93C)
-                  : _districtTints[d])
-              .withValues(alpha: held.contains(d) ? 0.075 : 0.028),
-      );
-    }
-  }
-
-  Rect _districtBox(Size size, int d) => Rect.fromLTWH(
-        (d % 2 == 0 ? 0.03 : 0.53) * size.width,
-        (d < 2 ? 0.03 : 0.53) * size.height,
-        size.width * 0.44,
-        size.height * 0.44,
-      );
-
-  void _river(Canvas c, Size size) {
-    final path = Path()
-      ..moveTo(size.width * 0.47, 0)
-      ..cubicTo(
-        size.width * 0.42,
-        size.height * 0.25,
-        size.width * 0.55,
-        size.height * 0.52,
-        size.width * 0.47,
-        size.height * 0.68,
-      )
-      ..cubicTo(
-        size.width * 0.40,
-        size.height * 0.82,
-        size.width * 0.52,
-        size.height * 0.92,
-        size.width * 0.50,
-        size.height,
-      );
-    c.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 84
-        ..color = const Color(0xFF07141D),
-    );
-    c.drawPath(
-      path,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 68
-        ..color = const Color(0xFF0B2230),
-    );
+  void _sea(Canvas c, Size size, math.Random rnd) {
     final wave = Paint()
-      ..color = const Color(0xFF1E5266).withValues(alpha: 0.3)
-      ..strokeWidth = 1.2;
-    for (var i = 0; i < 18; i++) {
-      final y = size.height * (0.04 + i * 0.054);
-      final x = size.width * (0.44 + math.sin(i * 0.9) * 0.02);
-      c.drawLine(Offset(x - 20, y), Offset(x + 20, y + 3), wave);
-    }
-    final bridge = Paint()..color = const Color(0xFF2A3140);
-    final rail = Paint()
-      ..color = const Color(0xFF4A5568)
-      ..strokeWidth = 2;
-    for (final y in [0.22, 0.52, 0.8]) {
-      final top = size.height * y;
-      c.drawRect(
-        Rect.fromLTWH(size.width * 0.39, top, size.width * 0.14, 20),
-        bridge,
-      );
-      c.drawLine(
-        Offset(size.width * 0.39, top + 3),
-        Offset(size.width * 0.53, top + 3),
-        rail,
-      );
-      c.drawLine(
-        Offset(size.width * 0.39, top + 16),
-        Offset(size.width * 0.53, top + 16),
-        rail,
-      );
-    }
-  }
-
-  void _avenues(Canvas c, Size size) {
-    final asphalt = Paint()..color = const Color(0xFF1A2029);
-    c.drawRect(
-      Rect.fromLTWH(0, size.height * 0.5 - 24, size.width, 48),
-      asphalt,
-    );
-    c.drawRect(
-      Rect.fromLTWH(size.width * 0.5 - 24, 0, 48, size.height),
-      asphalt,
-    );
-  }
-
-  void _blocks(Canvas c, Size size, math.Random rnd) {
-    final fill = Paint()..color = const Color(0xFF141B25);
-    final roof = Paint()..color = const Color(0xFF1B2431);
-    final edge = Paint()
-      ..color = const Color(0xFF232F3E)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-    final park = Paint()..color = const Color(0xFF0E1B16);
-    final awning = Paint()..color = const Color(0xFF3A2230);
-    final window = Paint()
-      ..color = const Color(0xFFFFC93C).withValues(alpha: 0.5);
-
-    for (var d = 0; d < 4; d++) {
-      final box = _districtBox(size, d);
-      for (var i = 0; i < 12; i++) {
-        final bw = box.width * (0.08 + rnd.nextDouble() * 0.13);
-        final bh = box.height * (0.05 + rnd.nextDouble() * 0.09);
-        final bx = box.left + rnd.nextDouble() * (box.width - bw);
-        final by = box.top + rnd.nextDouble() * (box.height - bh);
-        final r = Rect.fromLTWH(bx, by, bw, bh);
-        final isPark = rnd.nextInt(9) == 0;
-        final rr = RRect.fromRectAndRadius(r, const Radius.circular(3));
-        c.drawRect(
-          r.shift(const Offset(0, 3)),
-          Paint()..color = Colors.black.withValues(alpha: 0.35),
-        );
-        c.drawRRect(rr, isPark ? park : fill);
-        if (!isPark) {
-          c.drawRect(
-            Rect.fromLTWH(r.left + 3, r.top + 3, r.width - 6, 2),
-            roof,
-          );
-          final wins = 2 + rnd.nextInt(4);
-          for (var w = 0; w < wins; w++) {
-            c.drawRect(
-              Rect.fromLTWH(
-                r.left + 4 + rnd.nextDouble() * (r.width - 10),
-                r.top + 8 + rnd.nextDouble() * (r.height - 12),
-                2,
-                2,
-              ),
-              window,
-            );
-          }
-          c.drawRect(
-            Rect.fromLTWH(r.right - 11, r.top + 6, 5, 4),
-            awning,
-          );
-        }
-        c.drawRRect(rr, edge);
-      }
-    }
-
-    // Mái tôn chợ cóc.
-    for (var i = 0; i < 6; i++) {
-      final x = size.width * (0.05 + rnd.nextDouble() * 0.38);
-      final y = size.height * (0.58 + rnd.nextDouble() * 0.34);
-      c.drawRect(
-        Rect.fromLTWH(x, y, 42, 12),
-        Paint()..color = const Color(0xFF2A2418),
-      );
-      for (var k = 0; k < 4; k++) {
-        c.drawLine(
-          Offset(x + k * 10, y),
-          Offset(x + k * 10, y + 12),
-          Paint()
-            ..color = const Color(0xFF3D3420)
-            ..strokeWidth = 1,
-        );
-      }
-    }
-  }
-
-  void _roads(Canvas c, Size size) {
-    final dash = Paint()
-      ..color = const Color(0xFF55617A)
-      ..strokeWidth = 1.4;
-    if (size.width <= 0) return;
-    final cx = size.width * 0.5;
-    for (var y = 0.0; y < size.height; y += 30) {
-      c.drawLine(Offset(cx, y), Offset(cx, y + 15), dash);
-    }
-    final cy = size.height * 0.5;
-    for (var x = 0.0; x < size.width; x += 30) {
-      c.drawLine(Offset(x, cy), Offset(x + 15, cy), dash);
-    }
-    // Vạch sang đường hai bên ngã tư.
-    final zebra = Paint()..color = const Color(0xFF39434F);
-    for (var i = 0; i < 6; i++) {
-      c.drawRect(
-        Rect.fromLTWH(cx - 40 + i * 14, cy - 34, 8, 14),
-        zebra,
-      );
-      c.drawRect(
-        Rect.fromLTWH(cx - 40 + i * 14, cy + 20, 8, 14),
-        zebra,
-      );
-    }
-    for (var i = 0; i < 6; i++) {
-      c.drawRect(
-        Rect.fromLTWH(cx - 34, cy - 40 + i * 14, 14, 8),
-        zebra,
-      );
-    }
-  }
-
-  void _streetlights(Canvas c, Size size, math.Random rnd) {
-    for (var i = 0; i < 34; i++) {
-      final x = size.width * rnd.nextDouble();
+      ..color = const Color(0xFF1E5266).withValues(alpha: 0.16)
+      ..strokeWidth = 1.1;
+    for (var i = 0; i < 70; i++) {
       final y = size.height * rnd.nextDouble();
-      final warm = rnd.nextBool();
-      final color =
-          warm ? const Color(0xFFFFC93C) : const Color(0xFF66E0FF);
-      c.drawCircle(Offset(x, y), 2.4, Paint()..color = color);
-      c.drawCircle(
-        Offset(x, y),
-        15,
-        Paint()..color = color.withValues(alpha: 0.05),
-      );
-    }
-  }
-
-  void _districtPlates(Canvas c, Size size) {
-    for (var d = 0; d < 4; d++) {
-      final box = _districtBox(size, d);
-      final heldHere = held.contains(d);
-      c.drawRect(
-        box,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = heldHere ? 3 : 1.2
-          ..color = heldHere
-              ? const Color(0xFFFFC93C).withValues(alpha: 0.8)
-              : const Color(0xFF39455A).withValues(alpha: 0.6),
-      );
-      final plate = Rect.fromLTWH(
-        box.left + 8,
-        box.top + 8,
-        box.width - 16,
-        38,
-      );
-      c.drawRRect(
-        RRect.fromRectAndRadius(plate, const Radius.circular(6)),
-        Paint()..color = const Color(0xCC0A0E14),
-      );
-      c.drawRRect(
-        RRect.fromRectAndRadius(plate, const Radius.circular(6)),
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = (heldHere ? const Color(0xFFFFC93C) : _districtTints[d])
-              .withValues(alpha: 0.55),
-      );
-      paintText(
-        c,
-        '${_districtNames[d]}  ·  Q${d + 1}',
-        Offset(plate.center.dx, plate.top + 6),
-        size: 19,
-        color: heldHere
-            ? const Color(0xFFFFC93C)
-            : Colors.white.withValues(alpha: 0.95),
-        weight: FontWeight.w900,
-        align: TextAlign.center,
-      );
-      paintText(
-        c,
-        heldHere ? 'GIỮ TRỌN QUẬN  ·  +10% THU NHẬP' : 'CHƯA GIỮ TRỌN',
-        Offset(plate.center.dx, plate.top + 24),
-        size: 9.5,
-        color: heldHere
-            ? const Color(0xFFFFC93C).withValues(alpha: 0.95)
-            : _districtTints[d].withValues(alpha: 0.95),
-        weight: FontWeight.w800,
-        align: TextAlign.center,
-      );
-    }
-  }
-
-  void _neon(Canvas c, Size size, math.Random rnd) {
-    const colors = [Color(0xFFFF2E63), Color(0xFF00E5D0), Color(0xFFFFC93C)];
-    for (var i = 0; i < 18; i++) {
       final x = size.width * rnd.nextDouble();
-      final y = size.height * rnd.nextDouble();
-      final color = colors[rnd.nextInt(colors.length)];
-      final w = 12 + rnd.nextDouble() * 16;
-      final h = 3 + rnd.nextDouble() * 2;
-      c.drawRect(
-        Rect.fromLTWH(x, y, w, h),
-        Paint()..color = color.withValues(alpha: 0.55),
-      );
-      c.drawRect(
-        Rect.fromLTWH(x - 4, y - 4, w + 8, h + 8),
-        Paint()..color = color.withValues(alpha: 0.07),
-      );
+      c.drawLine(Offset(x - 24, y), Offset(x + 24, y + 3), wave);
     }
+    paintText(
+      c,
+      'BIỂN ĐÔNG',
+      Offset(size.width * 0.84, size.height * 0.42),
+      size: 13,
+      color: const Color(0xFF2E6B80).withValues(alpha: 0.8),
+      weight: FontWeight.w900,
+      align: TextAlign.center,
+    );
   }
 
   void _grain(Canvas c, Size size, math.Random rnd) {
-    final paint = Paint()..color = Colors.white.withValues(alpha: 0.028);
-    for (var i = 0; i < 700; i++) {
+    final paint = Paint()..color = Colors.white.withValues(alpha: 0.022);
+    for (var i = 0; i < 900; i++) {
       c.drawRect(
         Rect.fromLTWH(
           rnd.nextDouble() * size.width,
@@ -749,6 +488,6 @@ class _CityPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _CityPainter oldDelegate) =>
-      oldDelegate.held.length != held.length;
+  bool shouldRepaint(covariant _MapPainter old) =>
+      old.selected != selected || old.showLabels != showLabels;
 }

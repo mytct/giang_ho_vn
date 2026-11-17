@@ -59,8 +59,11 @@ cd client && flutter analyze && flutter test
   Con đỏ → Đàn em → Đại ca → Băng trưởng → Trùm quận → Ông trùm.
 - Thu nhập theo giây, cộng dồn offline, chặn trần 8 giờ.
 - 6 cơ sở, mở khoá theo cấp bậc; nâng cấp tăng thu nhập.
-- 24 ô địa bàn, mỗi ô có chủ (trống / băng NPC / người chơi), thuế và phòng thủ.
-  Chiếm được 1 ô = +10% thu nhập toàn bộ cơ sở.
+- **33 tỉnh/thành** (bản đồ 2025), mỗi tỉnh chia **12 quận** = 396 ô. Mỗi ô có chủ
+  (trống / băng NPC / người chơi), thuế và phòng thủ.
+- **6 vùng kinh tế**: Miền Bắc, Bắc Trung Bộ, Duyên hải Trung Bộ, Tây Nguyên,
+  Đông Nam Bộ, ĐBSCL. Giữ ≥1 quận ở vùng mới làm ăn được ở vùng đó; Hồ Chí Minh
+  là nhà nên luôn mở.
 - Trận chém 3–5 vs 3: server mô phỏng và trả event, client chỉ replay
   (không tính toán ở client nên không sửa được kết quả).
 - Sát thương popup, thanh máu, rung màn hình, lunge khi ra đòn.
@@ -94,8 +97,19 @@ cd client && flutter analyze && flutter test
   lính cầm 1 món. Chém nhau lính bị thương (thắng −10%, thua −16% quân khỏe);
   thương binh không ra trận, tự hồi 1/phút hoặc mua băng bó 15đ/thương.
   Băng càng đánh nhiều càng mất lực → tự chống snowball.
-- Chống snowball: giới hạn số ô theo bậc (2 + 2×bậc), mất đất được khiên 30 phút,
+- Chống snowball: giới hạn số ô theo bậc (4 + 4×bậc), mất đất được khiên 30 phút,
   người uy thấp không bị đại ca bắt nạt, hệ số thu nhập địa bàn cap 1.5×.
+- **Thành**: giữ trọn 12 quận của một tỉnh thì tỉnh thành "thành" của mình,
+  mỗi tỉnh có 3 slot công trình (mở khi giữ ≥1 quận ở tỉnh đó). Mất sạch đất của
+  tỉnh là công trình ngủ đông tới khi chiếm lại.
+- **Công trình** theo tỉnh (mỗi loại 3 cấp, giá 1.500–2.500 × (cấp+1)²):
+  Chợ đen (+6 hàng/giây), Trại lính (+25 lính tối đa, +5 phòng thủ mỗi ô),
+  Sòng bài (+8% thu nhập toàn bộ).
+- **Hàng hóa**: nguồn thứ hai (0,5/quận + chợ). Lính ăn 0,1 hàng/giây; hết hàng
+  thì lính bỏ đi. Đàn em/tướng vẫn ăn lương tiền. Muốn nuôi quân đông phải giữ
+  đất có chợ.
+- **Cơ sở làm ăn theo vùng**: 6 cơ sở × 6 vùng, mỗi vùng lên cấp riêng; nâng cấp
+  cần giữ ít nhất 1 quận ở vùng đó. UI tab Bang có hàng chip chọn vùng.
 - Chống snowball băng: tuyên chiến chỉ khi băng mục tiêu còn ≥50% lực băng mình,
   mỗi băng chỉ 1 cuộc chiến và nghỉ 30 phút sau khi dứt; cống nộp tối đa 2 băng
   chủ; khiên băng có cooldown 4 giờ/lần; tier yếu hơn được +20% phòng thủ và
@@ -108,8 +122,8 @@ cd client && flutter analyze && flutter test
 - Bộ sưu tập: Xe Wave (+8% thu nhập), Dây chuyền (+5% uy), Đồng hồ (+10% loot).
 - Đội hình: Cân bằng / Tiên phong (+15% dmg, −10% máu) / Đánh lén (−10% dmg,
   đòn hiểm nhanh hơn). Đổi trong tab Quân.
-- Chia quân giữ đất: mỗi đàn em gán vào ô +10 phòng thủ nhưng không đi chém;
-  số quân đi chém giảm đúng theo số đang giữ.
+- Chia quân giữ đất: mỗi đàn em +10 phòng thủ, mỗi 2 lính +1 phòng thủ; quân đang
+  giữ không đi chém, nên lực tấn công giảm đúng theo số đang giữ.
 - Độ nóng: chém thắng +8, thua +3, tự nguội 1 điểm/3 phút. Nóng làm giảm thu nhập
   tới 50%, từ 80 trở lên không chém được; đút lót 80đ/điểm để về 0.
 - Truy nã: treo tối thiểu 500đ lên đầu người khác; ai hạ được trong trận nhận hết.
@@ -129,7 +143,8 @@ Bấm **VÀO BẢN DEMO** ở màn đăng nhập (hoặc `POST /api/dev/login`) 
 
 - 5 tay chơi, 4 băng: Băng Rắn Độc (T1, mày), Băng Ó Đen (T2, đang chiến),
   Băng Cá Sấu (T2, đồng minh), Băng Chuột Cống (T3, đang nộp cống cho mày).
-- Địa bàn đã chia, quỹ băng, điểm chiến, boss tuần đã có damage.
+- Địa bàn đã chia, quỹ băng, điểm chiến, boss tuần đã có damage. Đại Ca A giữ trọn
+  12 quận Hồ Chí Minh (1 thành, chợ cấp 2 + trại + sòng cấp 1, 800 hàng).
 - Hộp thư 2 tin chưa đọc (1 tin có replay), hợp đồng "Dằn mặt" 1/2, nhiệm vụ ngày nhận được.
 - Sẵn độ nóng 45, 1 quân đang giữ đất, truy nã 3.000đ trên Ó Đen và 1.000đ trên Trùm C.
 - Cốt truyện đang ở chương 2 (đánh "Bảo Kê Chợ"), Hẻm 12 đã nâng cấp 2.
@@ -142,7 +157,7 @@ Bấm **VÀO BẢN DEMO** ở màn đăng nhập (hoặc `POST /api/dev/login`) 
 |---|---|---|
 | POST | `/api/login` | tạo tay chơi mới, trả token |
 | GET | `/api/state?token=` | tiền, uy, cấp, cơ sở, vũ khí |
-| POST | `/api/upgrade` | nâng cơ sở |
+| POST | `/api/upgrade` | nâng cơ sở của một vùng (kèm `district` = vùng) |
 | POST | `/api/recruit` | mộ đàn em |
 | POST | `/api/minion/recruit` | mộ lính đông theo số lượng |
 | POST | `/api/minion/gear` | mua dao/kiếm trang bị cho lính |
@@ -165,12 +180,13 @@ Bấm **VÀO BẢN DEMO** ở màn đăng nhập (hoặc `POST /api/dev/login`) 
 | POST | `/api/gang/tribute` | bắt băng yếu nộp cống 10% |
 | POST | `/api/gang/break-tribute` | cắt cống nộp |
 | POST | `/api/gang/upgrade` | tiêu quỹ: power/shield/boost |
-| POST | `/api/crew/assign` | chia quân giữ địa bàn |
+| POST | `/api/crew/assign` | chia đàn em (`crew`) và lính (`minions`) giữ địa bàn |
 | POST | `/api/crew/formation` | đổi đội hình |
 | POST | `/api/heat/bribe` | đút lót hạ độ nóng |
 | GET | `/api/bounties` | bảng truy nã |
 | POST | `/api/bounty` | treo thưởng lên người khác |
 | POST | `/api/territory/upgrade` | nâng cấp địa bàn |
+| POST | `/api/city/build` | xây/nâng công trình của tỉnh (chợ/trại/sòng) |
 | GET | `/api/campaign` | danh sách chương cốt truyện |
 | POST | `/api/campaign/fight` | đánh trùm chương hiện tại |
 | POST | `/api/prestige` | ra tù, nhận Máu giang hồ |

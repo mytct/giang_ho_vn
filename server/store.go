@@ -16,18 +16,19 @@ import (
 const offlineCap = 8 * time.Hour
 
 type Player struct {
-	ID            string
-	Name          string
-	Money         int64
-	Uy            int64
-	Level         int
-	XP            int64
-	Points        int
-	Stats         map[string]int
-	WeaponIdx     int
-	Crew          int
-	CrewSkills    []string
-	Levels        map[string]int
+	ID         string
+	Name       string
+	Money      int64
+	Uy         int64
+	Level      int
+	XP         int64
+	Points     int
+	Stats      map[string]int
+	WeaponIdx  int
+	Crew       int
+	CrewSkills []string
+	// Biz[quận][cơ sở] = cấp: mỗi khu vực có cơ sở làm ăn riêng.
+	Biz           map[int]map[string]int
 	Owned         map[int]bool
 	Missions      map[string]int
 	Claimed       map[string]bool
@@ -49,9 +50,13 @@ type Player struct {
 	HeatAt        time.Time
 	Bounty        int64
 	Guards        map[int]int
+	MinionGuards  map[int]int
 	Minions       int
 	Wounds        int
 	Gear          map[string]int
+	Goods         float64
+	// Works[quận][công trình] = cấp; chỉ có tác dụng khi giữ trọn quận.
+	Works         map[int]map[string]int
 	WoundAt       time.Time
 	Formation     string
 	LandIncome    float64
@@ -63,7 +68,8 @@ type Player struct {
 	Generals      []General
 	DevUnlimited  bool
 	UpkeepMsgAt   time.Time
-	DistrictCount [4]int
+	DistrictCount []int
+	RegionCount   []int
 	DistrictHeld  int
 	DistrictBonus float64
 }
@@ -178,6 +184,7 @@ type GuardSlot struct {
 	TerritoryID int    `json:"territoryId"`
 	Name        string `json:"name"`
 	Count       int    `json:"count"`
+	Minions     int    `json:"minions"`
 	Tax         int64  `json:"tax"`
 }
 
@@ -188,6 +195,32 @@ type MinionGearView struct {
 	Cost  int64  `json:"cost"`
 	Power int    `json:"power"`
 	Owned int    `json:"owned"`
+}
+
+type WorkView struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Desc     string `json:"desc"`
+	Icon     string `json:"icon"`
+	MaxLevel int    `json:"maxLevel"`
+}
+
+type CityWorkView struct {
+	Level int   `json:"level"`
+	Cost  int64 `json:"cost"`
+}
+
+type CityView struct {
+	District  int                     `json:"district"`
+	Name      string                  `json:"name"`
+	Region    int                     `json:"region"`
+	Held      int                     `json:"held"`
+	Total     int                     `json:"total"`
+	Mine      bool                    `json:"mine"`
+	Works     map[string]CityWorkView `json:"works"`
+	GoodsRate float64                 `json:"goodsRate"`
+	IncomeMul float64                 `json:"incomeMul"`
+	Defense   int                     `json:"defense"`
 }
 
 type ContractView struct {
@@ -247,6 +280,7 @@ const (
 	gangCreateCost     = 2000
 	warDuration        = 30 * time.Minute
 	lossShield         = 30 * time.Minute
+	contestWindow      = 5 * time.Minute
 	warCooldown        = 30 * time.Minute
 	shieldCooldown     = 4 * time.Hour
 	maxTributesPerGang = 2
@@ -297,12 +331,14 @@ func NewStore() *Store {
 
 type BusinessView struct {
 	ID           string  `json:"id"`
+	Region       int     `json:"region"`
 	Name         string  `json:"name"`
 	Icon         string  `json:"icon"`
 	Level        int     `json:"level"`
 	Rate         float64 `json:"rate"`
 	UpgradeCost  int64   `json:"upgradeCost"`
 	Unlocked     bool    `json:"unlocked"`
+	Land         bool    `json:"land"`
 	UnlockName   string  `json:"unlockName"`
 	UnlockAtRank int     `json:"unlockAtRank"`
 	Racket       int     `json:"racket"`
@@ -416,6 +452,8 @@ type StateView struct {
 	Guards            []GuardSlot      `json:"guards"`
 	GuardsTotal       int              `json:"guardsTotal"`
 	AvailableCrew     int              `json:"availableCrew"`
+	GuardedMinions    int              `json:"guardedMinions"`
+	AvailableMinions  int              `json:"availableMinions"`
 	Minions           int              `json:"minions"`
 	MinionHealthy     int              `json:"minionHealthy"`
 	Wounds            int              `json:"wounds"`
@@ -425,8 +463,13 @@ type StateView struct {
 	MaxMinions        int              `json:"maxMinions"`
 	MinionGear        []MinionGearView `json:"minionGear"`
 	Upkeep            float64          `json:"upkeep"`
+	Goods             float64          `json:"goods"`
+	GoodsRate         float64          `json:"goodsRate"`
+	GoodsUpkeep       float64          `json:"goodsUpkeep"`
 	DistrictHeld      int              `json:"districtHeld"`
 	DistrictBonus     float64          `json:"districtBonus"`
+	Cities            []CityView       `json:"cities"`
+	Works             []WorkView       `json:"works"`
 	Generals          []GeneralView    `json:"generals"`
 	GeneralCost       int64            `json:"generalCost"`
 	GeneralPower      int              `json:"generalPower"`
@@ -571,28 +614,33 @@ func (s *Store) Login(name string) (*Player, string, error) {
 		return nil, "", errors.New("tên tối đa 20 ký tự")
 	}
 	p := &Player{
-		ID:           token(),
-		Name:         name,
-		Money:        500,
-		Uy:           0,
-		Level:        1,
-		Stats:        map[string]int{},
-		WeaponIdx:    0,
-		Levels:       map[string]int{"karaoke": 1, "matxa": 1, "baixe": 1},
-		Owned:        map[int]bool{},
-		Missions:     map[string]int{},
-		Claimed:      map[string]bool{},
-		DailyDay:     time.Now().In(ictZone).Format("2006-01-02"),
-		Daily:        map[string]int{},
-		DailyClaimed: map[string]bool{},
-		Items:        map[string]bool{},
-		Guards:       map[int]int{},
-		Gear:         map[string]int{},
-		Racket:       map[string]int{},
-		Formation:    "balanced",
-		HeatAt:       time.Now(),
-		SeasonKey:    time.Now().In(ictZone).Format("2006-01"),
-		LastAccrual:  time.Now(),
+		ID:            token(),
+		Name:          name,
+		Money:         500,
+		Goods:         30,
+		Uy:            0,
+		Level:         1,
+		Stats:         map[string]int{},
+		WeaponIdx:     0,
+		Biz:           map[int]map[string]int{HomeRegion(): {"karaoke": 1, "matxa": 1, "baixe": 1}},
+		DistrictCount: make([]int, len(Provinces)),
+		RegionCount:   make([]int, len(RegionNames)),
+		Owned:         map[int]bool{},
+		Missions:      map[string]int{},
+		Claimed:       map[string]bool{},
+		DailyDay:      time.Now().In(ictZone).Format("2006-01-02"),
+		Daily:         map[string]int{},
+		DailyClaimed:  map[string]bool{},
+		Items:         map[string]bool{},
+		Guards:        map[int]int{},
+		MinionGuards:  map[int]int{},
+		Gear:          map[string]int{},
+		Works:         map[int]map[string]int{},
+		Racket:        map[string]int{},
+		Formation:     "balanced",
+		HeatAt:        time.Now(),
+		SeasonKey:     time.Now().In(ictZone).Format("2006-01"),
+		LastAccrual:   time.Now(),
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -917,33 +965,27 @@ func (s *Store) accrue(p *Player, now time.Time) {
 		p.Money -= upkeep
 		if p.Money < 0 {
 			p.Money = 0
-			s.desertLocked(p, now)
+			s.desertCrewLocked(p, now)
 		}
 	}
+	p.Goods += p.GoodsRate() * elapsed.Seconds()
+	if upkeep := p.GoodsUpkeepPerSec() * elapsed.Seconds(); upkeep > 0 {
+		p.Goods -= upkeep
+		if p.Goods < 0 {
+			p.Goods = 0
+			s.desertMinionsLocked(p, now)
+		}
+	}
+	p.clampGuards()
 	p.LastAccrual = now
 }
 
-// desertLocked: hết tiền trả lương thì lính/đàn em bỏ đi.
-func (s *Store) desertLocked(p *Player, now time.Time) {
+// desertCrewLocked: hết tiền trả lương thì đàn em bỏ đi.
+func (s *Store) desertCrewLocked(p *Player, now time.Time) {
 	if now.Sub(p.UpkeepMsgAt) < 30*time.Second {
 		return
 	}
 	p.UpkeepMsgAt = now
-	if p.Minions > 0 {
-		lost := p.Minions / 10
-		if lost < 1 {
-			lost = 1
-		}
-		p.Minions -= lost
-		if p.Wounds > p.Minions {
-			p.Wounds = p.Minions
-		}
-		p.addInbox(InboxMsg{
-			ID: token(), Kind: "upkeep", At: now.Unix(),
-			Text: fmt.Sprintf("Hết tiền trả lương, %d lính bỏ đi", lost),
-		})
-		return
-	}
 	if p.Crew > 0 {
 		p.Crew--
 		p.addInbox(InboxMsg{
@@ -951,6 +993,26 @@ func (s *Store) desertLocked(p *Player, now time.Time) {
 			Text: "Hết tiền trả lương, 1 đàn em bỏ đi",
 		})
 	}
+}
+
+// desertMinionsLocked: hết hàng nuôi quân thì lính bỏ đi.
+func (s *Store) desertMinionsLocked(p *Player, now time.Time) {
+	if p.Minions == 0 || now.Sub(p.UpkeepMsgAt) < 30*time.Second {
+		return
+	}
+	p.UpkeepMsgAt = now
+	lost := p.Minions / 10
+	if lost < 1 {
+		lost = 1
+	}
+	p.Minions -= lost
+	if p.Wounds > p.Minions {
+		p.Wounds = p.Minions
+	}
+	p.addInbox(InboxMsg{
+		ID: token(), Kind: "upkeep", At: now.Unix(),
+		Text: fmt.Sprintf("Hết hàng nuôi quân, %d lính bỏ đi", lost),
+	})
 }
 
 func XPNeed(level int) int64 {
@@ -1024,18 +1086,20 @@ func (p *Player) DamageReduction() float64 {
 	return r
 }
 
-func businessView(p *Player, def BusinessDef) BusinessView {
+func businessView(p *Player, def BusinessDef, region int) BusinessView {
 	rank := RankFor(p.Uy)
 	unlocked := rank.Level >= def.Unlock
-	lvl := p.Levels[def.ID]
+	lvl := p.BizLevel(region, def.ID)
 	return BusinessView{
 		ID:           def.ID,
+		Region:       region,
 		Name:         def.Name,
 		Icon:         def.Icon,
 		Level:        lvl,
-		Rate:         p.BusinessRate(def),
+		Rate:         p.BusinessRate(def, region),
 		UpgradeCost:  UpgradeCost(def, lvl),
 		Unlocked:     unlocked,
+		Land:         p.HoldsRegion(region),
 		UnlockName:   Ranks[def.Unlock].Name,
 		UnlockAtRank: def.Unlock,
 		Racket:       p.Racket[def.ID],
@@ -1050,7 +1114,46 @@ func racketCost(level int) int64 {
 	return 400 * int64(level+1) * int64(level+1)
 }
 
+func workViews() []WorkView {
+	out := make([]WorkView, 0, len(WorkDefs))
+	for _, def := range WorkDefs {
+		out = append(out, WorkView{
+			ID: def.ID, Name: def.Name, Desc: def.Desc,
+			Icon: def.Icon, MaxLevel: def.MaxLevel,
+		})
+	}
+	return out
+}
+
+func cityViews(p *Player) []CityView {
+	out := make([]CityView, 0, len(Provinces))
+	for pi, prov := range Provinces {
+		mine := p.HoldsDistrict(pi)
+		cv := CityView{
+			District: pi, Name: prov.Name, Region: prov.Region,
+			Total: DistrictSize, Held: p.DistrictCount[pi], Mine: mine,
+		}
+		if mine {
+			cv.Works = map[string]CityWorkView{}
+			for _, def := range WorkDefs {
+				lvl := p.WorkLevel(pi, def.ID)
+				cost := int64(0)
+				if lvl < def.MaxLevel {
+					cost = WorkCost(def, lvl)
+				}
+				cv.Works[def.ID] = CityWorkView{Level: lvl, Cost: cost}
+			}
+			cv.GoodsRate = 6 * float64(p.WorkLevel(pi, "cho"))
+			cv.IncomeMul = 1 + 0.08*float64(p.WorkLevel(pi, "song"))
+			cv.Defense = 5 * p.WorkLevel(pi, "trai")
+		}
+		out = append(out, cv)
+	}
+	return out
+}
+
 func (s *Store) stateLocked(p *Player) StateView {
+	s.recalcLandLocked(p)
 	rank := RankFor(p.Uy)
 	var next *RankView
 	if n := NextRank(p.Uy); n != nil {
@@ -1061,9 +1164,11 @@ func (s *Store) stateLocked(p *Player) StateView {
 		w := Weapons[p.WeaponIdx+1]
 		nw = &w
 	}
-	biz := make([]BusinessView, 0, len(BusinessDefs))
-	for _, def := range BusinessDefs {
-		biz = append(biz, businessView(p, def))
+	biz := make([]BusinessView, 0, len(BusinessDefs)*len(RegionNames))
+	for r := range RegionNames {
+		for _, def := range BusinessDefs {
+			biz = append(biz, businessView(p, def, r))
+		}
 	}
 	return StateView{
 		Name:              p.Name,
@@ -1107,17 +1212,24 @@ func (s *Store) stateLocked(p *Player) StateView {
 		Guards:            s.guardSlotsLocked(p),
 		GuardsTotal:       p.GuardsTotal(),
 		AvailableCrew:     p.AvailableCrew(),
+		GuardedMinions:    p.GuardedMinions(),
+		AvailableMinions:  p.AvailableMinions(),
 		Minions:           p.Minions,
 		MinionHealthy:     p.MinionHealthy(),
 		Wounds:            p.Wounds,
 		MinionPower:       p.MinionPower(),
 		MinionRecruitCost: p.MinionRecruitCost(1),
 		MinionHealCost:    minionHealCost,
-		MaxMinions:        MaxMinions,
+		MaxMinions:        p.MinionCap(),
 		MinionGear:        minionGearViews(p),
 		Upkeep:            p.UpkeepPerSec(),
+		Goods:             p.Goods,
+		GoodsRate:         p.GoodsRate(),
+		GoodsUpkeep:       p.GoodsUpkeepPerSec(),
 		DistrictHeld:      p.DistrictHeld,
 		DistrictBonus:     p.DistrictBonus,
+		Cities:            cityViews(p),
+		Works:             workViews(),
 		Generals:          generalViews(p),
 		GeneralCost:       generalRecruitCost(len(p.Generals)),
 		GeneralPower:      p.GeneralPower(),
@@ -1145,7 +1257,7 @@ func (s *Store) State(tok string) (StateView, error) {
 	return s.stateLocked(p), nil
 }
 
-func (s *Store) UpgradeBusiness(tok, id string) (StateView, error) {
+func (s *Store) UpgradeBusiness(tok, id string, region int) (StateView, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, err := s.player(tok)
@@ -1162,16 +1274,28 @@ func (s *Store) UpgradeBusiness(tok, id string) (StateView, error) {
 	if def == nil {
 		return StateView{}, errors.New("cơ sở không tồn tại")
 	}
+	if region < 0 || region >= len(RegionNames) {
+		return StateView{}, errors.New("vùng không tồn tại")
+	}
 	if RankFor(p.Uy).Level < def.Unlock {
 		return StateView{}, fmt.Errorf("cần đạt %s để mở", Ranks[def.Unlock].Name)
 	}
-	lvl := p.Levels[id]
+	if !p.HoldsRegion(region) {
+		return StateView{}, fmt.Errorf("phải giữ ít nhất 1 quận ở %s mới làm ăn được", RegionNames[region])
+	}
+	lvl := p.BizLevel(region, id)
 	cost := UpgradeCost(*def, lvl)
 	if p.Money < cost {
 		return StateView{}, errors.New("không đủ tiền")
 	}
 	p.Money -= cost
-	p.Levels[id] = lvl + 1
+	if p.Biz == nil {
+		p.Biz = map[int]map[string]int{}
+	}
+	if p.Biz[region] == nil {
+		p.Biz[region] = map[string]int{}
+	}
+	p.Biz[region][id] = lvl + 1
 	p.Missions["upgrade"]++
 	p.Daily["upgrade"]++
 	p.AddXP(15)
@@ -1241,8 +1365,8 @@ func (s *Store) RecruitMinions(tok string, count int) (StateView, error) {
 	if count > 100 {
 		count = 100
 	}
-	if p.Minions+count > MaxMinions {
-		return StateView{}, fmt.Errorf("băng chỉ nuôi tối đa %d lính", MaxMinions)
+	if cap := p.MinionCap(); p.Minions+count > cap {
+		return StateView{}, fmt.Errorf("băng chỉ nuôi tối đa %d lính", cap)
 	}
 	cost := p.MinionRecruitCost(count)
 	if p.Money < cost {
@@ -1348,6 +1472,8 @@ func (s *Store) Map(tok string) ([]Territory, StateView, error) {
 			if owner, ok := s.players[strings.TrimPrefix(t.OwnerID, "p:")]; ok {
 				out[i].OwnerGangID = owner.GangID
 			}
+		} else if strings.HasPrefix(t.OwnerID, "npc:") {
+			out[i].OwnerGangID = t.OwnerID
 		}
 	}
 	return out, s.stateLocked(p), nil
@@ -1360,11 +1486,16 @@ func (s *Store) defenseOf(t *Territory) int {
 			if p := owner.Power(); p > def {
 				def = p
 			}
-			def += owner.Guards[t.ID]*10 + t.Level*8
-			if owner.DistrictCount[DistrictOf(t.ID)] >= DistrictSize {
-				def += 12
+			def += owner.Guards[t.ID]*10 + owner.MinionGuards[t.ID]/2 + t.Level*8
+			d := DistrictOf(t.ID)
+			if owner.CityHeld(d) {
+				def += 12 + 5*owner.WorkLevel(d, "trai")
 			}
 		}
+	}
+	// Đất mới chiếm chưa vững: trong 5 phút phòng thủ chỉ còn 60%.
+	if t.Contested(time.Now()) {
+		def = def * 3 / 5
 	}
 	return def
 }
@@ -1450,7 +1581,7 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 	}
 	eff := p.AllEffects()
 	hpMe := 150 + p.AvailableCrew()*20 + eff.HpAdd + p.BonusHP() +
-		p.MinionHealthy()/4 + p.GeneralHP()
+		p.AvailableMinions()/4 + p.GeneralHP()
 	myHitDmg := int(float64(power/2+4) * (1 + eff.DmgMul))
 	critEvery := eff.CritEvery
 	if critEvery == 0 {
@@ -1530,6 +1661,8 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 		prevOwner := t.OwnerID
 		t.OwnerID = "p:" + p.ID
 		t.OwnerName = p.Name
+		t.PrevOwnerID = prevOwner
+		t.ContestedAt = time.Now().Add(contestWindow).Unix()
 		p.Owned[id] = true
 		s.recalcLandLocked(p)
 		// Băng NPC nhớ mặt, 30–60 phút nữa kéo quân đòi lại.
@@ -1541,6 +1674,8 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 		}
 		if defender != nil {
 			delete(defender.Owned, id)
+			delete(defender.Guards, id)
+			delete(defender.MinionGuards, id)
 			s.recalcLandLocked(defender)
 			if dh := defender.MinionHealthy(); dh > 0 {
 				w := dh / 12
@@ -1586,7 +1721,7 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 			}
 			defender.addInbox(InboxMsg{
 				ID: token(), Kind: "attack", At: now.Unix(),
-				Text:     fmt.Sprintf("%s chém mất %s của mày", p.Name, t.Name),
+				Text:     fmt.Sprintf("%s chém mất %s — còn 5 phút đánh lại", p.Name, t.Name),
 				FromName: p.Name, TerritoryID: t.ID, BattleID: recordID,
 				RevengeUntil: now.Add(lossShield).Unix(),
 			})
@@ -2729,7 +2864,7 @@ func (s *Store) RaiseRacket(tok, id string) (StateView, error) {
 		return StateView{}, err
 	}
 	s.accrue(p, time.Now())
-	if p.Levels[id] <= 0 {
+	if !p.HasBiz(id) {
 		return StateView{}, errors.New("quán này chưa mở")
 	}
 	level := p.Racket[id]
@@ -2849,6 +2984,8 @@ func (s *Store) tickNPCsLocked(now time.Time) {
 			t.OwnerID = r.GangID
 			t.OwnerName = npcGangs[r.GangID]
 			delete(owner.Owned, r.TerritoryID)
+			delete(owner.Guards, r.TerritoryID)
+			delete(owner.MinionGuards, r.TerritoryID)
 			s.recalcLandLocked(owner)
 			owner.addInbox(InboxMsg{
 				ID: token(), Kind: "npc", At: now.Unix(), TerritoryID: r.TerritoryID,
@@ -3079,13 +3216,14 @@ func (s *Store) guardSlotsLocked(p *Player) []GuardSlot {
 			continue
 		}
 		out = append(out, GuardSlot{
-			TerritoryID: i, Name: t.Name, Count: p.Guards[i], Tax: t.Tax,
+			TerritoryID: i, Name: t.Name, Count: p.Guards[i],
+			Minions: p.MinionGuards[i], Tax: t.Tax,
 		})
 	}
 	return out
 }
 
-func (s *Store) AssignGuard(tok string, territoryID, count int) (StateView, error) {
+func (s *Store) AssignGuard(tok string, territoryID, crew, minions int) (StateView, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, err := s.player(tok)
@@ -3096,14 +3234,19 @@ func (s *Store) AssignGuard(tok string, territoryID, count int) (StateView, erro
 	if !p.Owned[territoryID] {
 		return StateView{}, errors.New("không phải địa bàn của mày")
 	}
-	if count < 0 {
+	if crew < 0 || minions < 0 {
 		return StateView{}, errors.New("số quân không hợp lệ")
 	}
 	others := p.GuardsTotal() - p.Guards[territoryID]
-	if others+count > p.Crew {
+	if others+crew > p.Crew {
 		return StateView{}, errors.New("không đủ đàn em để chia")
 	}
-	p.Guards[territoryID] = count
+	otherMinions := p.GuardedMinions() - p.MinionGuards[territoryID]
+	if otherMinions+minions > p.MinionHealthy() {
+		return StateView{}, errors.New("không đủ lính khỏe để chia")
+	}
+	p.Guards[territoryID] = crew
+	p.MinionGuards[territoryID] = minions
 	return s.stateLocked(p), nil
 }
 
@@ -3204,16 +3347,20 @@ func (s *Store) SetBounty(tok, targetID string, amount int64) (StateView, error)
 
 func (s *Store) recalcLandLocked(p *Player) {
 	total := 0.0
-	var counts [4]int
+	counts := make([]int, len(Provinces))
+	regions := make([]int, len(RegionNames))
 	for id := range p.Owned {
-		if id >= 0 && id < len(s.territories) {
-			t := s.territories[id]
-			total += float64(t.Tax) * (1 + 0.2*float64(t.Level)) * 0.15
-			counts[DistrictOf(id)]++
+		if id < 0 || id >= len(s.territories) {
+			continue
 		}
+		t := s.territories[id]
+		total += float64(t.Tax) * (1 + 0.2*float64(t.Level)) * 0.15
+		pi := DistrictOf(id)
+		counts[pi]++
+		regions[RegionOfProvince(pi)]++
 	}
 	p.LandIncome = total
-	// Giữ trọn cả quận (6 ô) = +10% thu nhập và +12 phòng thủ mỗi ô.
+	// Giữ trọn 12 quận một tỉnh = thành của mình (+10% thu nhập mỗi thành).
 	held := 0
 	for _, c := range counts {
 		if c >= DistrictSize {
@@ -3221,6 +3368,7 @@ func (s *Store) recalcLandLocked(p *Player) {
 		}
 	}
 	p.DistrictCount = counts
+	p.RegionCount = regions
 	p.DistrictHeld = held
 	p.DistrictBonus = 0.1 * float64(held)
 }
@@ -3247,6 +3395,45 @@ func (s *Store) UpgradeTerritory(tok string, territoryID int) (StateView, error)
 	p.Money -= cost
 	t.Level++
 	s.recalcLandLocked(p)
+	return s.stateLocked(p), nil
+}
+
+// BuildWork xây/nâng công trình trong một thành đã chiếm trọn.
+func (s *Store) BuildWork(tok string, district int, workID string) (StateView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return StateView{}, err
+	}
+	s.accrue(p, time.Now())
+	s.recalcLandLocked(p)
+	def := WorkByID(workID)
+	if def == nil {
+		return StateView{}, errors.New("công trình không có")
+	}
+	if district < 0 || district >= len(Provinces) {
+		return StateView{}, errors.New("tỉnh không tồn tại")
+	}
+	if !p.HoldsDistrict(district) {
+		return StateView{}, fmt.Errorf("phải giữ ít nhất 1 quận ở %s mới xây được", Provinces[district].Name)
+	}
+	lvl := p.WorkLevel(district, workID)
+	if lvl >= def.MaxLevel {
+		return StateView{}, errors.New("công trình đã cấp tối đa")
+	}
+	cost := WorkCost(*def, lvl)
+	if p.Money < cost {
+		return StateView{}, errors.New("không đủ tiền xây")
+	}
+	p.Money -= cost
+	if p.Works == nil {
+		p.Works = map[int]map[string]int{}
+	}
+	if p.Works[district] == nil {
+		p.Works[district] = map[string]int{}
+	}
+	p.Works[district][workID] = lvl + 1
 	return s.stateLocked(p), nil
 }
 
@@ -3383,12 +3570,15 @@ func (s *Store) Prestige(tok string) (StateView, error) {
 	p.WeaponIdx = 0
 	p.Crew = 0
 	p.CrewSkills = []string{}
-	p.Levels = map[string]int{"karaoke": 1, "matxa": 1, "baixe": 1}
+	p.Biz = map[int]map[string]int{HomeRegion(): {"karaoke": 1, "matxa": 1, "baixe": 1}}
 	p.Owned = map[int]bool{}
 	p.Guards = map[int]int{}
+	p.MinionGuards = map[int]int{}
 	p.Minions = 0
 	p.Wounds = 0
 	p.Gear = map[string]int{}
+	p.Goods = 30
+	p.Works = map[int]map[string]int{}
 	p.WoundAt = time.Time{}
 	p.Heat = 0
 	p.Bounty = 0
@@ -3399,6 +3589,7 @@ func (s *Store) Prestige(tok string) (StateView, error) {
 	p.Contract = nil
 	p.Chapter = 0
 	p.LandIncome = 0
+	s.recalcLandLocked(p)
 	p.addInbox(InboxMsg{
 		ID: token(), Kind: "prestige", At: time.Now().Unix(),
 		Text: fmt.Sprintf("Ra tù lần %d — Máu giang hồ x%.1f", p.Prestige, p.PrestigeMultiplier()),
@@ -3417,6 +3608,7 @@ func (s *Store) MaxAccount(tok string) (StateView, error) {
 	s.accrue(p, time.Now())
 	p.Chapter = len(Chapters)
 	p.Money = 5000000
+	p.Goods = 5000
 	p.Uy = 30000
 	p.Level = 40
 	p.XP = 0
@@ -3433,11 +3625,17 @@ func (s *Store) MaxAccount(tok string) (StateView, error) {
 			{ID: token(), Name: "Bà Chị Hạnh", Level: 2, SkillA: "satthu", SkillB: "trau"},
 		}
 	}
-	for _, b := range BusinessDefs {
-		p.Levels[b.ID] = 5
+	for r := range RegionNames {
+		for _, b := range BusinessDefs {
+			if p.Biz[r] == nil {
+				p.Biz[r] = map[string]int{}
+			}
+			p.Biz[r][b.ID] = 5
+		}
 	}
 	held := 0
-	for i := range s.territories {
+	home := HomeProvince * DistrictSize
+	for i := home; i < home+DistrictSize; i++ {
 		if held >= 8 {
 			break
 		}

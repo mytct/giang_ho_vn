@@ -53,14 +53,23 @@ func TestIncomeAccruesAndCaps(t *testing.T) {
 func TestUpgradeBusiness(t *testing.T) {
 	st, tok, p := newTestPlayer(t)
 	p.Money = 10000
+	bizOf := func(s StateView) BusinessView {
+		for _, b := range s.Businesses {
+			if b.ID == "karaoke" && b.Region == HomeRegion() {
+				return b
+			}
+		}
+		t.Fatal("không thấy cơ sở ở vùng nhà")
+		return BusinessView{}
+	}
 	before, _ := st.State(tok)
-	cost := before.Businesses[0].UpgradeCost
-	after, err := st.UpgradeBusiness(tok, "karaoke")
+	cost := bizOf(before).UpgradeCost
+	after, err := st.UpgradeBusiness(tok, "karaoke", HomeRegion())
 	if err != nil {
 		t.Fatalf("nâng cấp: %v", err)
 	}
-	if after.Businesses[0].Level != 2 {
-		t.Fatalf("level phải là 2, got %d", after.Businesses[0].Level)
+	if bizOf(after).Level != 2 {
+		t.Fatalf("level phải là 2, got %d", bizOf(after).Level)
 	}
 	if after.Money != before.Money-cost {
 		t.Fatalf("trừ tiền sai: %d -> %d, cost %d", before.Money, after.Money, cost)
@@ -139,7 +148,7 @@ func TestMissionRequiresProgressThenPaysOnce(t *testing.T) {
 		t.Fatal("chưa nâng cấp thì không được nhận")
 	}
 	p.Money = 5000
-	if _, err := st.UpgradeBusiness(tok, "karaoke"); err != nil {
+	if _, err := st.UpgradeBusiness(tok, "karaoke", HomeRegion()); err != nil {
 		t.Fatal(err)
 	}
 	before, _ := st.State(tok)
@@ -328,10 +337,10 @@ func TestDailyScalesWithLevel(t *testing.T) {
 func TestDailyClaimAndReset(t *testing.T) {
 	st, tok, p := newTestPlayer(t)
 	p.Money = 10000
-	if _, err := st.UpgradeBusiness(tok, "karaoke"); err != nil {
+	if _, err := st.UpgradeBusiness(tok, "karaoke", HomeRegion()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.UpgradeBusiness(tok, "karaoke"); err != nil {
+	if _, err := st.UpgradeBusiness(tok, "karaoke", HomeRegion()); err != nil {
 		t.Fatal(err)
 	}
 	before, _ := st.State(tok)
@@ -367,10 +376,12 @@ func TestDailyClaimAndReset(t *testing.T) {
 
 func TestTerritoryCapAndShield(t *testing.T) {
 	st, tok, p := newTestPlayer(t)
-	p.Owned[0] = true
-	p.Owned[1] = true
-	if _, _, err := st.Attack(tok, 2); err == nil {
-		t.Fatal("cấp Con đỏ chỉ giữ 2 ô, phải bị chặn")
+	cap := MaxTerritories(RankFor(p.Uy).Level)
+	for i := 0; i < cap; i++ {
+		p.Owned[i] = true
+	}
+	if _, _, err := st.Attack(tok, cap); err == nil {
+		t.Fatalf("cấp Con đỏ chỉ giữ %d ô, phải bị chặn", cap)
 	}
 
 	b, _, err := st.Login("Bé Bảy")
@@ -745,8 +756,16 @@ func TestDemoSeedWorld(t *testing.T) {
 	if state.Name != "Đại Ca A" || state.GangName != "Băng Rắn Độc" {
 		t.Fatalf("state demo sai: %s / %s", state.Name, state.GangName)
 	}
-	if state.OwnedCount != 2 {
-		t.Fatalf("demo phải giữ 2 ô, got %d", state.OwnedCount)
+	if state.OwnedCount != DistrictSize {
+		t.Fatalf("demo phải giữ trọn %d quận Hồ Chí Minh, got %d", DistrictSize, state.OwnedCount)
+	}
+	if state.DistrictHeld != 1 || len(state.Cities) != len(Provinces) {
+		t.Fatalf("demo phải có 1 thành và đủ %d tỉnh, got held=%d cities=%d",
+			len(Provinces), state.DistrictHeld, len(state.Cities))
+	}
+	home := state.Cities[HomeProvince]
+	if !home.Mine || home.Works["cho"].Level != 2 {
+		t.Fatalf("thành Hồ Chí Minh phải có chợ cấp 2: %+v", home)
 	}
 	if state.Unread < 2 {
 		t.Fatalf("demo phải có tin chưa đọc, got %d", state.Unread)
@@ -1016,7 +1035,7 @@ func TestDefenseReplayAndFlip(t *testing.T) {
 		t.Fatalf("nạn nhân phải có 1 log, got %d", len(b.Defenses))
 	}
 	rec := b.Defenses[0]
-	if rec.AttackerName != a.Name || rec.TerritoryName != "Hẻm 12" {
+	if rec.AttackerName != a.Name || rec.TerritoryName != st.territories[0].Name {
 		t.Fatalf("log sai: %+v", rec)
 	}
 	if rec.Result.Win {
@@ -1050,26 +1069,40 @@ func TestGuardsSplitAndFormation(t *testing.T) {
 	st.territories[0].OwnerName = p.Name
 	p.Owned[0] = true
 
-	state, err := st.AssignGuard(tok, 0, 2)
+	state, err := st.AssignGuard(tok, 0, 2, 0)
 	if err != nil {
 		t.Fatalf("chia quân: %v", err)
 	}
 	if state.GuardsTotal != 2 || state.AvailableCrew != 2 {
 		t.Fatalf("chia quân sai: %+v", state.Guards)
 	}
-	if _, err := st.AssignGuard(tok, 0, 9); err == nil {
+	if _, err := st.AssignGuard(tok, 0, 9, 0); err == nil {
 		t.Fatal("không được chia quá số quân")
 	}
-	if _, err := st.AssignGuard(tok, 1, 1); err == nil {
+	if _, err := st.AssignGuard(tok, 1, 1, 0); err == nil {
 		t.Fatal("không được giữ ô không phải của mình")
 	}
 
 	before := st.defenseOf(st.territories[0])
-	if _, err := st.AssignGuard(tok, 0, 4); err != nil {
+	if _, err := st.AssignGuard(tok, 0, 4, 0); err != nil {
 		t.Fatal(err)
 	}
 	if st.defenseOf(st.territories[0]) <= before {
 		t.Fatal("quân giữ đất phải tăng phòng thủ")
+	}
+
+	// Lính đông cũng chia canh giữ được và không còn đi chém.
+	p.Minions = 100
+	powerBefore := p.MinionPower()
+	state, err = st.AssignGuard(tok, 0, 4, 40)
+	if err != nil || state.GuardedMinions != 40 || state.AvailableMinions != 60 {
+		t.Fatalf("chia lính giữ đất: %v %+v", err, state.GuardedMinions)
+	}
+	if p.MinionPower() >= powerBefore {
+		t.Fatal("lính giữ đất phải bớt lực đi chém")
+	}
+	if _, err := st.AssignGuard(tok, 0, 4, 200); err == nil {
+		t.Fatal("không được chia quá số lính khỏe")
 	}
 
 	state, err = st.SetFormation(tok, "front")
@@ -1320,14 +1353,14 @@ func TestUpkeepDesertion(t *testing.T) {
 func TestRacketRaisesIncomeAndHeat(t *testing.T) {
 	st, tok, p := newTestPlayer(t)
 	p.Money = 100000
-	before := p.BusinessRate(BusinessDefs[0])
+	before := p.BusinessRate(BusinessDefs[0], HomeRegion())
 	if _, err := st.RaiseRacket(tok, "karaoke"); err != nil {
 		t.Fatal(err)
 	}
 	if p.Racket["karaoke"] != 1 {
 		t.Fatalf("bảo kê phải lên cấp 1, got %d", p.Racket["karaoke"])
 	}
-	if p.BusinessRate(BusinessDefs[0]) <= before {
+	if p.BusinessRate(BusinessDefs[0], HomeRegion()) <= before {
 		t.Fatal("bảo kê phải tăng thu nhập")
 	}
 	if p.Heat < 5 {
@@ -1338,19 +1371,48 @@ func TestRacketRaisesIncomeAndHeat(t *testing.T) {
 func TestDistrictBonusWhenHoldingWholeDistrict(t *testing.T) {
 	st, _, p := newTestPlayer(t)
 	p.Money = 100000
-	for i := 0; i < DistrictSize; i++ {
-		st.territories[i].OwnerID = "p:" + p.ID
-		p.Owned[i] = true
+	base := HomeProvince * DistrictSize
+	p.Owned[base] = true
+	st.recalcLandLocked(p)
+	one := p.BusinessRate(BusinessDefs[0], HomeRegion())
+	for i := 1; i < DistrictSize; i++ {
+		st.territories[base+i].OwnerID = "p:" + p.ID
+		p.Owned[base+i] = true
 	}
 	st.recalcLandLocked(p)
 	if p.DistrictHeld != 1 || p.DistrictBonus < 0.099 {
-		t.Fatalf("giữ trọn quận phải +10%%, held=%d bonus=%v", p.DistrictHeld, p.DistrictBonus)
+		t.Fatalf("giữ trọn tỉnh phải +10%%, held=%d bonus=%v", p.DistrictHeld, p.DistrictBonus)
 	}
-	before := p.BusinessRate(BusinessDefs[0])
-	p.DistrictBonus = 0
-	plain := p.BusinessRate(BusinessDefs[0])
-	if before <= plain {
-		t.Fatalf("bonus quận không vào thu nhập: %v vs %v", before, plain)
+	if full := p.BusinessRate(BusinessDefs[0], HomeRegion()); full <= one {
+		t.Fatalf("giữ trọn tỉnh phải tăng thu nhập: %v vs %v", full, one)
+	}
+	other := (HomeRegion() + 1) % len(RegionNames)
+	if p.BusinessRate(BusinessDefs[0], other) != 0 {
+		t.Fatal("vùng chưa giữ quận nào thì cơ sở không sinh thu nhập")
+	}
+}
+
+func TestBusinessPerRegion(t *testing.T) {
+	st, tok, p := newTestPlayer(t)
+	p.Money = 100000
+	if _, err := st.UpgradeBusiness(tok, "karaoke", 0); err == nil {
+		t.Fatal("chưa có quận ở Miền Bắc thì không được nâng cơ sở")
+	}
+
+	p.Owned[0] = true
+	st.territories[0].OwnerID = "p:" + p.ID
+	st.recalcLandLocked(p)
+	for i := 0; i < 2; i++ {
+		if _, err := st.UpgradeBusiness(tok, "karaoke", 0); err != nil {
+			t.Fatalf("nâng cơ sở Miền Bắc: %v", err)
+		}
+	}
+	if p.BizLevel(0, "karaoke") != 2 || p.BizLevel(HomeRegion(), "karaoke") != 1 {
+		t.Fatalf("chỉ vùng Miền Bắc lên cấp: bắc=%d nhà=%d",
+			p.BizLevel(0, "karaoke"), p.BizLevel(HomeRegion(), "karaoke"))
+	}
+	if p.BusinessRate(BusinessDefs[0], 0) <= p.BusinessRate(BusinessDefs[0], HomeRegion()) {
+		t.Fatal("vùng có đất phải ăn hơn vùng không có quận")
 	}
 }
 
@@ -1483,5 +1545,132 @@ func TestMinionsGetWoundedInBattle(t *testing.T) {
 	}
 	if p.MinionPower() >= 50 {
 		t.Fatal("thương binh phải làm giảm lực")
+	}
+}
+
+func TestContestWindowAfterCapture(t *testing.T) {
+	st, tokA, a := newTestPlayer(t)
+	b, tokB, err := st.Login("Đại Ca B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.territories[5].OwnerID = "p:" + b.ID
+	st.territories[5].OwnerName = b.Name
+	b.Owned[5] = true
+	b.Uy = 500
+	st.recalcLandLocked(b)
+
+	a.Money = 1_000_000
+	a.Uy = 20000
+	a.Crew = 5
+	a.DevUnlimited = true
+	res, _, err := st.Attack(tokA, 5)
+	if err != nil {
+		t.Fatalf("đánh: %v", err)
+	}
+	if !res.Win {
+		t.Fatalf("phải thắng: power %d defense %d", res.Power, res.Defense)
+	}
+
+	t5 := st.territories[5]
+	if t5.PrevOwnerID != "p:"+b.ID || !t5.Contested(time.Now()) {
+		t.Fatalf("đất mới chiếm phải ở trạng thái tranh chấp: %+v", t5)
+	}
+	contested := st.defenseOf(t5)
+	t5.ContestedAt = 0
+	if full := st.defenseOf(t5); contested >= full {
+		t.Fatalf("trong 5 phút phòng thủ phải yếu hơn: %d vs %d", contested, full)
+	}
+
+	// Chủ cũ phải đánh lại được ngay trong cửa sổ 5 phút.
+	b.DevUnlimited = true
+	if _, _, err := st.Attack(tokB, 5); err != nil {
+		t.Fatalf("chủ cũ phải phản công được: %v", err)
+	}
+}
+
+// holdCity giao trọn một tỉnh cho p.
+func holdCity(st *Store, p *Player, province int) {
+	for i := province * DistrictSize; i < (province+1)*DistrictSize; i++ {
+		st.territories[i].OwnerID = "p:" + p.ID
+		st.territories[i].OwnerName = p.Name
+		p.Owned[i] = true
+	}
+	st.recalcLandLocked(p)
+}
+
+func TestBuildWorkNeedsLand(t *testing.T) {
+	st, tok, p := newTestPlayer(t)
+	p.Money = 100000
+	province := (HomeProvince + 1) % len(Provinces)
+	if _, err := st.BuildWork(tok, province, "cho"); err == nil {
+		t.Fatal("chưa có quận ở tỉnh này thì không xây được")
+	}
+	if _, err := st.BuildWork(tok, province, "bida"); err == nil {
+		t.Fatal("công trình lạ phải bị từ chối")
+	}
+
+	holdCity(st, p, province)
+	before := p.Money
+	after, err := st.BuildWork(tok, province, "cho")
+	if err != nil {
+		t.Fatalf("xây chợ: %v", err)
+	}
+	if after.Cities[province].Works["cho"].Level != 1 {
+		t.Fatalf("chợ phải cấp 1, got %+v", after.Cities[province].Works["cho"])
+	}
+	if p.Money != before-WorkCost(WorkDefs[0], 0) {
+		t.Fatalf("trừ tiền sai: %d -> %d", before, p.Money)
+	}
+	if after.GoodsRate <= goodsPerOwned*float64(p.OwnedCount()) {
+		t.Fatalf("chợ phải tăng hàng/giây, got %v", after.GoodsRate)
+	}
+}
+
+func TestWorkEffectsOnlyWhileHoldingCity(t *testing.T) {
+	st, _, p := newTestPlayer(t)
+	p.Money = 100000
+	holdCity(st, p, HomeProvince)
+	plain := p.RatePerSec()
+	p.Works = map[int]map[string]int{HomeProvince: {"trai": 2, "song": 1}}
+	p.Minions = 100
+	if p.MinionCap() != MaxMinions+50 {
+		t.Fatalf("trại cấp 2 phải +50 lính, got %d", p.MinionCap())
+	}
+	if p.WorkIncomeMul() != 1.08 {
+		t.Fatalf("sòng cấp 1 phải +8%%, got %v", p.WorkIncomeMul())
+	}
+	if p.RatePerSec() <= plain {
+		t.Fatalf("sòng phải tăng thu nhập: %v vs %v", p.RatePerSec(), plain)
+	}
+
+	// Mất sạch quận của tỉnh thì công trình ngủ đông (HCM là nhà nên dùng tỉnh khác).
+	other := (HomeProvince + 1) % len(Provinces)
+	p.Works = map[int]map[string]int{other: {"trai": 2, "song": 1}}
+	holdCity(st, p, other)
+	withFree := p.RatePerSec()
+	for i := other * DistrictSize; i < (other+1)*DistrictSize; i++ {
+		delete(p.Owned, i)
+	}
+	st.recalcLandLocked(p)
+	if p.MinionCap() != MaxMinions || p.RatePerSec() >= withFree {
+		t.Fatalf("mất tỉnh mà công trình vẫn chạy: cap %d rate %v (%v)",
+			p.MinionCap(), p.RatePerSec(), withFree)
+	}
+}
+
+func TestGoodsFeedMinionsAndDesertion(t *testing.T) {
+	st, tok, p := newTestPlayer(t)
+	p.Minions = 100
+	p.Goods = 0
+	p.LastAccrual = time.Now().Add(-time.Minute)
+	if _, err := st.State(tok); err != nil {
+		t.Fatal(err)
+	}
+	if p.Minions >= 100 {
+		t.Fatalf("hết hàng phải có lính bỏ đi, còn %d", p.Minions)
+	}
+	if (&Player{}).GoodsUpkeepPerSec() != 0 {
+		t.Fatal("không có lính thì không tốn hàng")
 	}
 }

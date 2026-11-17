@@ -56,18 +56,21 @@ class GuardSlot {
     required this.name,
     required this.count,
     required this.tax,
+    this.minions = 0,
   });
 
   final int territoryId;
   final String name;
   final int count;
   final int tax;
+  final int minions;
 
   factory GuardSlot.fromJson(Map<String, dynamic> j) => GuardSlot(
         territoryId: asInt(j['territoryId']),
         name: j['name'] as String? ?? '',
         count: asInt(j['count']),
         tax: asInt(j['tax']),
+        minions: asInt(j['minions']),
       );
 }
 
@@ -603,6 +606,8 @@ class BusinessInfo {
     required this.unlockName,
     this.racket = 0,
     this.racketCost = 0,
+    this.region = 0,
+    this.land = true,
   });
 
   final String id;
@@ -615,6 +620,8 @@ class BusinessInfo {
   final String unlockName;
   final int racket;
   final int racketCost;
+  final int region;
+  final bool land;
 
   factory BusinessInfo.fromJson(Map<String, dynamic> j) => BusinessInfo(
         id: j['id'] as String? ?? '',
@@ -627,7 +634,91 @@ class BusinessInfo {
         unlockName: j['unlockName'] as String? ?? '',
         racket: asInt(j['racket']),
         racketCost: asInt(j['racketCost']),
+        region: asInt(j['region']),
+        land: j['land'] as bool? ?? true,
       );
+}
+
+class CityWorkInfo {
+  const CityWorkInfo({required this.level, required this.cost});
+
+  final int level;
+  final int cost;
+
+  factory CityWorkInfo.fromJson(Map<String, dynamic> j) => CityWorkInfo(
+        level: asInt(j['level']),
+        cost: asInt(j['cost']),
+      );
+}
+
+class WorkInfo {
+  const WorkInfo({
+    required this.id,
+    required this.name,
+    required this.desc,
+    required this.icon,
+    required this.maxLevel,
+  });
+
+  final String id;
+  final String name;
+  final String desc;
+  final String icon;
+  final int maxLevel;
+
+  factory WorkInfo.fromJson(Map<String, dynamic> j) => WorkInfo(
+        id: j['id'] as String? ?? '',
+        name: j['name'] as String? ?? '',
+        desc: j['desc'] as String? ?? '',
+        icon: j['icon'] as String? ?? '?',
+        maxLevel: asInt(j['maxLevel']),
+      );
+}
+
+class CityInfo {
+  const CityInfo({
+    required this.district,
+    required this.name,
+    required this.held,
+    required this.total,
+    required this.mine,
+    required this.works,
+    required this.goodsRate,
+    required this.incomeMul,
+    required this.defense,
+    this.region = 0,
+  });
+
+  final int district;
+  final String name;
+  final int held;
+  final int total;
+  final bool mine;
+  final Map<String, CityWorkInfo> works;
+  final double goodsRate;
+  final double incomeMul;
+  final int defense;
+  final int region;
+
+  factory CityInfo.fromJson(Map<String, dynamic> j) => CityInfo(
+        district: asInt(j['district']),
+        name: j['name'] as String? ?? '',
+        held: asInt(j['held']),
+        total: asInt(j['total']),
+        mine: j['mine'] as bool? ?? false,
+        region: asInt(j['region']),
+        works: (j['works'] as Map? ?? {}).map(
+          (k, v) => MapEntry(
+            k as String,
+            CityWorkInfo.fromJson((v as Map).cast<String, dynamic>()),
+          ),
+        ),
+        goodsRate: asDouble(j['goodsRate']),
+        incomeMul: asDouble(j['incomeMul']),
+        defense: asInt(j['defense']),
+      );
+
+  CityWorkInfo? work(String id) => works[id];
 }
 
 class PlayerState {
@@ -676,7 +767,8 @@ class PlayerState {
     required this.bribeCost,
     required this.formation,
     required this.guards,
-    required this.guardsTotal,
+    this.guardedMinions = 0,
+    this.availableMinions = 0,
     required this.availableCrew,
     required this.minions,
     required this.minionHealthy,
@@ -687,6 +779,11 @@ class PlayerState {
     required this.maxMinions,
     required this.minionGear,
     this.upkeep = 0,
+    this.goods = 0,
+    this.goodsRate = 0,
+    this.goodsUpkeep = 0,
+    this.cities = const [],
+    this.works = const [],
     this.districtHeld = 0,
     this.districtBonus = 0,
     this.generals = const [],
@@ -744,8 +841,10 @@ class PlayerState {
   final int bribeCost;
   final String formation;
   final List<GuardSlot> guards;
-  final int guardsTotal;
+  int get guardsTotal => guards.fold(0, (a, g) => a + g.count);
   final int availableCrew;
+  final int guardedMinions;
+  final int availableMinions;
   final int minions;
   final int minionHealthy;
   final int wounds;
@@ -755,6 +854,11 @@ class PlayerState {
   final int maxMinions;
   final List<MinionGearInfo> minionGear;
   final double upkeep;
+  final double goods;
+  final double goodsRate;
+  final double goodsUpkeep;
+  final List<CityInfo> cities;
+  final List<WorkInfo> works;
   final int districtHeld;
   final double districtBonus;
   final List<GeneralInfo> generals;
@@ -838,7 +942,8 @@ class PlayerState {
         guards: (j['guards'] as List? ?? [])
             .map((e) => GuardSlot.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
-        guardsTotal: asInt(j['guardsTotal']),
+        guardedMinions: asInt(j['guardedMinions']),
+        availableMinions: asInt(j['availableMinions']),
         availableCrew: asInt(j['availableCrew']),
         minions: asInt(j['minions']),
         minionHealthy: asInt(j['minionHealthy']),
@@ -851,6 +956,15 @@ class PlayerState {
             .map((e) => MinionGearInfo.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
         upkeep: asDouble(j['upkeep']),
+        goods: asDouble(j['goods']),
+        goodsRate: asDouble(j['goodsRate']),
+        goodsUpkeep: asDouble(j['goodsUpkeep']),
+        cities: (j['cities'] as List? ?? [])
+            .map((e) => CityInfo.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(),
+        works: (j['works'] as List? ?? [])
+            .map((e) => WorkInfo.fromJson((e as Map).cast<String, dynamic>()))
+            .toList(),
         districtHeld: asInt(j['districtHeld']),
         districtBonus: asDouble(j['districtBonus']),
         generals: (j['generals'] as List? ?? [])
@@ -893,6 +1007,11 @@ class Territory {
     required this.defense,
     required this.ownerGangId,
     required this.level,
+    this.prevOwnerId = '',
+    this.contestedUntil = 0,
+    this.provinceId = 0,
+    this.province = '',
+    this.region = 0,
   });
 
   final int id;
@@ -903,6 +1022,14 @@ class Territory {
   final int defense;
   final String ownerGangId;
   final int level;
+  final String prevOwnerId;
+  final int contestedUntil;
+  final int provinceId;
+  final String province;
+  final int region;
+
+  bool get contested =>
+      contestedUntil > DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
   int get upgradeCost => 600 * (level + 1) * (level + 1);
 
@@ -918,6 +1045,11 @@ class Territory {
         defense: asInt(j['defense']),
         ownerGangId: j['ownerGangId'] as String? ?? '',
         level: asInt(j['level']),
+        prevOwnerId: j['prevOwnerId'] as String? ?? '',
+        contestedUntil: asInt(j['contestedUntil']),
+        provinceId: asInt(j['provinceId']),
+        province: j['province'] as String? ?? '',
+        region: asInt(j['region']),
       );
 }
 

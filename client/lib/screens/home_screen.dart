@@ -11,6 +11,7 @@ import '../widgets/common.dart';
 import 'event_sheets.dart';
 import 'brawl_screen.dart';
 import 'level_sheet.dart';
+import 'vn_map_data.dart';
 
 const _rankColors = [
   Color(0xFF8A90A0),
@@ -32,6 +33,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final AlleyGame _scene;
+  int _region = homeRegionIndex;
 
   @override
   void initState() {
@@ -108,11 +110,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   SectionTitle(
                     text: 'Cơ sở làm ăn',
                     trailing: Text(
-                      '${s.businesses.where((b) => b.unlocked).length}/${s.businesses.length} mở khoá',
+                      '${s.businesses.where((b) => b.region == _region && b.unlocked).length}'
+                      '/${s.businesses.where((b) => b.region == _region).length} mở khoá',
                       style: labelStyle(size: 10.5),
                     ),
                   ),
-                  for (final b in s.businesses)
+                  _regionChips(s),
+                  const SizedBox(height: 6),
+                  for (final b in s.businesses.where((b) => b.region == _region))
                     _BusinessTile(
                       business: b,
                       onTap: () {
@@ -120,6 +125,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           showToast(
                             context,
                             'Cần đạt ${b.unlockName} mới mở được',
+                            error: true,
+                          );
+                          return;
+                        }
+                        if (!b.land) {
+                          showToast(
+                            context,
+                            'Giữ ít nhất 1 ô ở khu này mới làm ăn được',
                             error: true,
                           );
                           return;
@@ -398,6 +411,67 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  String _regionName(int region) => region >= 0 && region < vnRegionNames.length
+      ? vnRegionNames[region]
+      : 'Vùng $region';
+
+  int _regionHeld(PlayerState s, int region) {
+    var n = 0;
+    for (final c in s.cities) {
+      if (c.region == region) n += c.held;
+    }
+    return n;
+  }
+
+  Widget _regionChips(PlayerState s) {
+    final count = vnRegionNames.length;
+    return SizedBox(
+      height: 32,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: count,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final active = _region == i;
+          final held = _regionHeld(s, i);
+          final open = held > 0 || i == homeRegionIndex;
+          return GestureDetector(
+            onTap: () => setState(() => _region = i),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: active ? GH.cyan.withValues(alpha: 0.16) : GH.panel2,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: active ? GH.cyan : GH.line),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!open) ...[
+                    const Icon(Icons.lock_rounded, size: 11, color: GH.muted),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(
+                    _regionName(i),
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      color: active ? GH.cyan : GH.text,
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text('$held quận', style: labelStyle(size: 9)),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _openUpgradeSheet(BusinessInfo b) {
     final c = widget.controller;
     showModalBottomSheet<void>(
@@ -410,13 +484,13 @@ class _HomeScreenState extends State<HomeScreen> {
           final s = c.state;
           if (s == null) return const SizedBox.shrink();
           final biz = s.businesses.firstWhere(
-            (e) => e.id == b.id,
+            (e) => e.id == b.id && e.region == b.region,
             orElse: () => b,
           );
           final nextRate = biz.level == 0
               ? 0.0
               : biz.rate / biz.level * (biz.level + 1);
-          final canBuy = s.money >= biz.upgradeCost && !c.busy;
+          final canBuy = s.money >= biz.upgradeCost && !c.busy && biz.land;
           return Container(
             decoration: const BoxDecoration(
               color: GH.panel,
@@ -471,6 +545,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                     const SizedBox(height: 18),
+                    _kv('Vùng', _regionName(biz.region), color: GH.cyan),
                     _kv('Thu nhập hiện tại', '+${formatMoney(biz.rate)}/s'),
                     _kv(
                       'Sau nâng cấp',
@@ -496,12 +571,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 18),
                     PrimaryButton(
-                      label: canBuy
-                          ? 'NÂNG CẤP  −${formatMoney(biz.upgradeCost)}'
-                          : (c.busy ? 'ĐANG XỬ LÝ...' : 'KHÔNG ĐỦ TIỀN'),
+                      label: !biz.land
+                          ? 'CẦN GIỮ ĐẤT Ở KHU NÀY'
+                          : canBuy
+                              ? 'NÂNG CẤP  −${formatMoney(biz.upgradeCost)}'
+                              : (c.busy ? 'ĐANG XỬ LÝ...' : 'KHÔNG ĐỦ TIỀN'),
                       icon: Icons.trending_up_rounded,
                       enabled: canBuy,
-                      onTap: () => _doUpgrade(ctx, biz.id),
+                      onTap: () => _doUpgrade(ctx, biz.id, biz.region),
                     ),
                     if (biz.racket < 3) ...[
                       const SizedBox(height: 10),
@@ -536,9 +613,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _doUpgrade(BuildContext ctx, String id) async {
+  Future<void> _doUpgrade(BuildContext ctx, String id, int district) async {
     try {
-      await widget.controller.upgrade(id);
+      await widget.controller.upgrade(id, district);
       if (ctx.mounted) Navigator.of(ctx).pop();
     } on ApiException catch (e) {
       if (ctx.mounted) showToast(ctx, e.message, error: true);
@@ -653,6 +730,16 @@ class _PlayerHeader extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                  Text(
+                    'Hàng ${state.goods.round()} · ${state.goodsRate.toStringAsFixed(1)}/s',
+                    style: TextStyle(
+                      color: state.goodsUpkeep > state.goodsRate
+                          ? GH.red
+                          : GH.muted,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -835,7 +922,7 @@ class _BusinessTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final locked = !business.unlocked;
+    final locked = !business.unlocked || !business.land;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: GestureDetector(
@@ -862,7 +949,9 @@ class _BusinessTile extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         locked
-                            ? 'Cần đạt ${business.unlockName}'
+                            ? (business.unlocked
+                                ? 'Chưa giữ ô nào ở khu này'
+                                : 'Cần đạt ${business.unlockName}')
                             : 'Cấp ${business.level} · +${formatMoney(business.rate)}/s'
                                 '${business.racket > 0 ? ' · BK ${business.racket}/3' : ''}',
                         style: labelStyle(

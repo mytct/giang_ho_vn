@@ -190,15 +190,19 @@ class CrewScreen extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            Text('CHIA QUÂN GIỮ ĐẤT',
-                                style: labelStyle(
-                                    size: 10.5, color: GH.text)),
-                            const Spacer(),
-                            Text(
-                              '${s.guardsTotal}/${s.crew} đang giữ',
-                              style: labelStyle(size: 9.5),
+                            Expanded(
+                              child: Text('CHIA QUÂN GIỮ ĐẤT',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: labelStyle(
+                                      size: 10.5, color: GH.text)),
                             ),
                           ],
+                        ),
+                        Text(
+                          '${s.guardsTotal}/${s.crew} đàn em · '
+                          '${s.guardedMinions}/${s.minionHealthy} lính',
+                          style: labelStyle(size: 9.5),
                         ),
                         const SizedBox(height: 6),
                         if (s.guards.isEmpty)
@@ -210,10 +214,16 @@ class CrewScreen extends StatelessWidget {
                           for (final slot in s.guards)
                             _GuardRow(
                               slot: slot,
-                              canAdd: s.guardsTotal < s.crew,
+                              canAddCrew: s.guardsTotal < s.crew,
+                              canAddMinions:
+                                  s.guardedMinions < s.minionHealthy,
                               busy: controller.busy,
-                              onChanged: (next) => _assignGuard(
-                                      context, controller, slot.territoryId, next),
+                              onChanged: (crew, minions) => _assignGuard(
+                                  context,
+                                  controller,
+                                  slot.territoryId,
+                                  crew,
+                                  minions),
                             ),
                       ],
                     ),
@@ -640,6 +650,13 @@ class _MinionPanel extends StatelessWidget {
             '${s.minionHealthy} khỏe · ${s.wounds} bị thương · +${s.minionPower} lực',
             style: labelStyle(size: 10),
           ),
+          Text(
+            'ăn ${s.goodsUpkeep.toStringAsFixed(1)} hàng/s · đang có ${s.goods.round()}',
+            style: labelStyle(
+              size: 10,
+              color: s.goodsUpkeep > s.goodsRate ? GH.red : GH.muted,
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -803,10 +820,11 @@ Future<void> _assignGuard(
   BuildContext context,
   GameController c,
   int territoryId,
-  int count,
+  int crew,
+  int minions,
 ) async {
   try {
-    await c.assignGuard(territoryId, count);
+    await c.assignGuard(territoryId, crew, minions);
   } on ApiException catch (e) {
     if (context.mounted) showToast(context, e.message, error: true);
   }
@@ -868,48 +886,70 @@ class _FormationChip extends StatelessWidget {
 class _GuardRow extends StatelessWidget {
   const _GuardRow({
     required this.slot,
-    required this.canAdd,
+    required this.canAddCrew,
+    required this.canAddMinions,
     required this.busy,
     required this.onChanged,
   });
 
   final GuardSlot slot;
-  final bool canAdd;
+  final bool canAddCrew;
+  final bool canAddMinions;
   final bool busy;
-  final ValueChanged<int> onChanged;
+  final void Function(int crew, int minions) onChanged;
 
   @override
   Widget build(BuildContext context) {
+    final defense = slot.count * 10 + slot.minions ~/ 2;
     return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Row(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(slot.name,
+          Row(
+            children: [
+              Expanded(
+                child: Text(slot.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         fontSize: 11.5, fontWeight: FontWeight.w700)),
-                Text('+${slot.count * 10} phòng thủ · ${slot.count} quân',
-                    style: labelStyle(size: 9)),
-              ],
-            ),
+              ),
+              Text('+$defense thủ',
+                  style: labelStyle(size: 9.5, color: GH.cyan)),
+            ],
           ),
-          _stepBtn('−', slot.count > 0 && !busy,
-              () => onChanged(slot.count - 1)),
-          SizedBox(
-            width: 26,
-            child: Text('${slot.count}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w800)),
-          ),
-          _stepBtn('+', canAdd && !busy, () => onChanged(slot.count + 1)),
+          const SizedBox(height: 3),
+          _line('đàn em', slot.count, 1, canAddCrew,
+              (v) => onChanged(v, slot.minions)),
+          _line('lính', slot.minions, 10, canAddMinions,
+              (v) => onChanged(slot.count, v)),
         ],
       ),
+    );
+  }
+
+  Widget _line(
+    String label,
+    int value,
+    int step,
+    bool canAdd,
+    ValueChanged<int> onChanged,
+  ) {
+    return Row(
+      children: [
+        SizedBox(width: 46, child: Text(label, style: labelStyle(size: 9.5))),
+        _stepBtn('−', value > 0 && !busy,
+            () => onChanged((value - step).clamp(0, value))),
+        SizedBox(
+          width: 34,
+          child: Text('$value',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w800)),
+        ),
+        _stepBtn('+', canAdd && !busy, () => onChanged(value + step)),
+      ],
     );
   }
 

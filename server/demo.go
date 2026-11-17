@@ -30,7 +30,7 @@ func (s *Store) SeedDemo() map[string]string {
 			Stats:     map[string]int{"hp": 1, "dmg": 2},
 			WeaponIdx: weapon, Crew: crew,
 			CrewSkills:   []string{"dao", "trau", "maulieu", "ne"}[:min(crew, 4)],
-			Levels:       map[string]int{"karaoke": 3, "matxa": 2, "baixe": 2, "nhau": 1},
+			Biz:          map[int]map[string]int{HomeRegion(): {"karaoke": 3, "matxa": 2, "baixe": 2, "nhau": 1}},
 			Owned:        map[int]bool{},
 			Missions:     map[string]int{"win": 3, "upgrade": 2, "recruit": 1, "weapon": 1},
 			Claimed:      map[string]bool{},
@@ -39,6 +39,7 @@ func (s *Store) SeedDemo() map[string]string {
 			DailyClaimed: map[string]bool{},
 			Items:        map[string]bool{"wave": true},
 			Guards:       map[int]int{},
+			MinionGuards: map[int]int{},
 			Gear:         map[string]int{},
 			Formation:    "balanced",
 			HeatAt:       now,
@@ -68,7 +69,7 @@ func (s *Store) SeedDemo() map[string]string {
 		return g
 	}
 
-	a, tokA := mkPlayer("Đại Ca A", 7, 25000, 900, 2, 4, 2)
+	a, tokA := mkPlayer("Đại Ca A", 7, 25000, 2000, 2, 4, 2)
 	b, _ := mkPlayer("Đệ B", 3, 8000, 300, 1, 2, 0)
 	c, tokC := mkPlayer("Trùm C", 5, 15000, 600, 2, 3, 0)
 	d, tokD := mkPlayer("Chuột Nhỏ", 2, 6000, 200, 1, 1, 0)
@@ -100,7 +101,9 @@ func (s *Store) SeedDemo() map[string]string {
 	gangA.Treasury = 12000
 	a.Heat = 45
 	a.HeatAt = now
-	a.Guards[0] = 1
+	homeBase := HomeProvince * DistrictSize
+	a.Guards[homeBase] = 1
+	a.MinionGuards[homeBase] = 10
 	a.Minions = 120
 	a.Wounds = 8
 	a.WoundAt = now
@@ -114,17 +117,26 @@ func (s *Store) SeedDemo() map[string]string {
 		t.OwnerName = p.Name
 		p.Owned[t.ID] = true
 	}
-	own(s.territories[0], a)
-	own(s.territories[5], a)
-	own(s.territories[1], c)
-	own(s.territories[2], c)
-	own(s.territories[3], c)
-	own(s.territories[4], d)
-	own(s.territories[6], e)
-	own(s.territories[7], e)
-	own(s.territories[8], e)
+	// Đại Ca A giữ trọn 12 quận Hồ Chí Minh: có thành, có công trình, có hàng.
+	for k := 0; k < DistrictSize; k++ {
+		own(s.territories[homeBase+k], a)
+	}
+	cBase := 15 * DistrictSize
+	for k := 0; k < 3; k++ {
+		own(s.territories[cBase+k], c)
+	}
+	dBase := 16 * DistrictSize
+	for k := 0; k < 2; k++ {
+		own(s.territories[dBase+k], d)
+	}
+	eBase := 17 * DistrictSize
+	for k := 0; k < 3; k++ {
+		own(s.territories[eBase+k], e)
+	}
 	a.Chapter = 1
-	s.territories[0].Level = 2
+	s.territories[homeBase].Level = 2
+	a.Works = map[int]map[string]int{HomeProvince: {"cho": 2, "trai": 1, "song": 1}}
+	a.Goods = 800
 
 	a.Contract = &Contract{
 		ID: "c_win", Title: "Dằn mặt", Desc: "Thắng 2 trận trong 15 phút",
@@ -135,12 +147,14 @@ func (s *Store) SeedDemo() map[string]string {
 	}
 
 	defenseID := token()
+	lostID := homeBase + 8
+	lostName := s.territories[lostID].Name
 	a.Defenses = []DefenseRecord{{
 		ID: defenseID, At: now.Add(-5 * time.Minute).Unix(),
-		AttackerName: "Ó Đen", TerritoryID: 8, TerritoryName: "Chợ Đêm",
+		AttackerName: "Ó Đen", TerritoryID: lostID, TerritoryName: lostName,
 		Result: BrawlResult{
 			Win: false, Power: a.Power(), Defense: e.Power(),
-			TerritoryID: 8, TerritoryName: "Chợ Đêm",
+			TerritoryID: lostID, TerritoryName: lostName,
 			Events: []BrawlEvent{
 				{At: 0, Side: "enemy", Dmg: 18, MyHp: 250, EnemyHp: 300},
 				{At: 380, Side: "me", Dmg: 12, MyHp: 250, EnemyHp: 288},
@@ -155,9 +169,9 @@ func (s *Store) SeedDemo() map[string]string {
 	s.recalcLandLocked(e)
 	a.addInbox(InboxMsg{
 		ID: token(), Kind: "attack", At: now.Add(-5 * time.Minute).Unix(),
-		Text:         "Ó Đen chém mất Chợ Đêm của mày",
+		Text:         "Ó Đen chém mất " + lostName + " của mày",
 		FromName:     "Ó Đen",
-		TerritoryID:  8,
+		TerritoryID:  lostID,
 		BattleID:     defenseID,
 		RevengeUntil: now.Add(20 * time.Minute).Unix(),
 	})

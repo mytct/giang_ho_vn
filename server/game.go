@@ -1,6 +1,10 @@
 package main
 
-import "math"
+import (
+	"math"
+	"strconv"
+	"time"
+)
 
 type Rank struct {
 	Level int
@@ -145,10 +149,9 @@ func (p *Player) GeneralHP() int {
 	return total
 }
 
-// UpkeepPerSec: quân và tướng ăn lương mỗi giây, ăn hết tiền thì bỏ đi.
+// UpkeepPerSec: đàn em và tướng ăn lương tiền mỗi giây; lính ăn hàng.
 func (p *Player) UpkeepPerSec() float64 {
-	return float64(p.Crew)*1.5 + float64(p.MinionHealthy())*0.3 +
-		float64(len(p.Generals))*3
+	return float64(p.Crew)*1.5 + float64(len(p.Generals))*3
 }
 
 type ItemDef struct {
@@ -178,7 +181,79 @@ const (
 	MaxMinions        = 500
 	minionRecruitBase = 120
 	minionHealCost    = 15
+	goodsPerOwned     = 0.5
+	minionGoodsPerSec = 0.1
 )
+
+// WorkDef là công trình xây trong thành (giữ trọn 6 ô một quận).
+type WorkDef struct {
+	ID       string
+	Name     string
+	Desc     string
+	Icon     string
+	MaxLevel int
+	BaseCost int64
+}
+
+var WorkDefs = []WorkDef{
+	{"cho", "Chợ đen", "+6 hàng/giây", "C", 3, 1500},
+	{"trai", "Trại lính", "+25 lính tối đa, +5 phòng thủ mỗi ô", "T", 3, 2000},
+	{"song", "Sòng bài", "+8% thu nhập toàn bộ", "S", 3, 2500},
+}
+
+func WorkByID(id string) *WorkDef {
+	for i := range WorkDefs {
+		if WorkDefs[i].ID == id {
+			return &WorkDefs[i]
+		}
+	}
+	return nil
+}
+
+func WorkCost(def WorkDef, level int) int64 {
+	return def.BaseCost * int64(level+1) * int64(level+1)
+}
+
+// CityHeld: giữ đủ 12 quận của một tỉnh thì tỉnh thành "thành" của mình.
+func (p *Player) CityHeld(province int) bool {
+	return province >= 0 && province < len(DistrictNames) &&
+		p.DistrictCount[province] >= DistrictSize
+}
+
+// HoldsDistrict: có ít nhất 1 quận trong tỉnh (Hồ Chí Minh là nhà, luôn làm ăn được).
+func (p *Player) HoldsDistrict(province int) bool {
+	if province < 0 || province >= len(DistrictNames) {
+		return false
+	}
+	return province == HomeProvince || p.DistrictCount[province] > 0
+}
+
+func (p *Player) WorkLevel(province int, id string) int {
+	return p.Works[province][id]
+}
+
+// workSum: chỉ công trình ở tỉnh còn giữ đất mới có tác dụng.
+func (p *Player) workSum(id string) int {
+	total := 0
+	for d := range DistrictNames {
+		if p.HoldsDistrict(d) {
+			total += p.WorkLevel(d, id)
+		}
+	}
+	return total
+}
+
+func (p *Player) GoodsRate() float64 {
+	return goodsPerOwned*float64(p.OwnedCount()) + 6*float64(p.workSum("cho"))
+}
+
+func (p *Player) GoodsUpkeepPerSec() float64 {
+	return float64(p.MinionHealthy()) * minionGoodsPerSec
+}
+
+func (p *Player) MinionCap() int { return MaxMinions + 25*p.workSum("trai") }
+
+func (p *Player) WorkIncomeMul() float64 { return 1 + 0.08*float64(p.workSum("song")) }
 
 type MinionGearDef struct {
 	ID    string
@@ -210,9 +285,49 @@ func (p *Player) MinionHealthy() int {
 	return h
 }
 
+func (p *Player) GuardedMinions() int {
+	total := 0
+	for _, n := range p.MinionGuards {
+		total += n
+	}
+	return total
+}
+
+// AvailableMinions: lính còn đi chém được (trừ số đang canh giữ).
+func (p *Player) AvailableMinions() int {
+	n := p.MinionHealthy() - p.GuardedMinions()
+	if n < 0 {
+		return 0
+	}
+	return n
+}
+
+// clampGuards trả quân về khi lính chết/thương hoặc đàn em bỏ đi.
+func (p *Player) clampGuards() {
+	over := p.GuardedMinions() - p.MinionHealthy()
+	for id, n := range p.MinionGuards {
+		if over <= 0 {
+			break
+		}
+		cut := min(n, over)
+		p.MinionGuards[id] = n - cut
+		over -= cut
+	}
+	over = p.GuardsTotal() - p.Crew
+	for id, n := range p.Guards {
+		if over <= 0 {
+			break
+		}
+		cut := min(n, over)
+		p.Guards[id] = n - cut
+		over -= cut
+	}
+}
+
 // MinionPower: lính khỏe đóng góp 1 lực mỗi 2 đứa, cộng vũ khí đang cầm.
+// Lính đang canh giữ đất không đi chém.
 func (p *Player) MinionPower() int {
-	h := p.MinionHealthy()
+	h := p.AvailableMinions()
 	if h == 0 {
 		return 0
 	}
@@ -253,15 +368,46 @@ var BusinessDefs = []BusinessDef{
 	{"sanchim", "Sân Chim", "S", 40, 3},
 }
 
-// 24 ô chia 4 quận, mỗi quận 6 ô liền nhau.
-const DistrictSize = 6
+// 33 tỉnh/thành (dữ liệu 2025), mỗi tỉnh 12 quận.
+const DistrictSize = 12
 
-var DistrictNames = []string{"Hẻm 12", "Chợ Hòa Bình", "Bến Xe", "Sài Gòn"}
+// DistrictNames/HomeProvince dựng từ Provinces (provinces.go).
+var DistrictNames []string
+var HomeProvince int
+
+func init() {
+	for i, p := range Provinces {
+		DistrictNames = append(DistrictNames, p.Name)
+		if p.Name == "Hồ Chí Minh" {
+			HomeProvince = i
+		}
+	}
+}
 
 func DistrictOf(id int) int { return id / DistrictSize }
 
+func HomeRegion() int { return Provinces[HomeProvince].Region }
+
+func ProvinceOf(id int) string {
+	p := DistrictOf(id)
+	if p < 0 || p >= len(Provinces) {
+		return ""
+	}
+	return Provinces[p].Name
+}
+
+func RegionOfProvince(province int) int {
+	if province < 0 || province >= len(Provinces) {
+		return 0
+	}
+	return Provinces[province].Region
+}
+
 type Territory struct {
 	ID          int    `json:"id"`
+	ProvinceID  int    `json:"provinceId"`
+	Province    string `json:"province"`
+	Region      int    `json:"region"`
 	Level       int    `json:"level"`
 	OwnerGangID string `json:"ownerGangId"`
 	Name        string `json:"name"`
@@ -269,47 +415,46 @@ type Territory struct {
 	OwnerName   string `json:"ownerName"`
 	Tax         int64  `json:"tax"`
 	Defense     int    `json:"defense"`
+	// Chủ mới phải giữ đủ contestWindow mới vững; trước đó chủ cũ đánh lại dễ hơn.
+	PrevOwnerID string `json:"prevOwnerId"`
+	ContestedAt int64  `json:"contestedUntil"`
+}
+
+func (t *Territory) Contested(now time.Time) bool { return t.ContestedAt > now.Unix() }
+
+// npcOwnerFor: rải vài quận cho băng NPC để có đất mà đánh.
+func npcOwnerFor(province, slot int) string {
+	switch (province*3 + slot) % 9 {
+	case 0:
+		return "npc:ran"
+	case 3:
+		return "npc:ca"
+	case 5:
+		return "npc:o"
+	case 7:
+		return "npc:chuot"
+	}
+	return ""
 }
 
 func NewTerritories() []*Territory {
-	type def struct {
-		name    string
-		owner   string
-		ownerID string
-		tax     int64
-		def     int
-	}
-	defs := []def{
-		{"Hẻm 12", "", "", 20, 55},
-		{"Chợ Hòa Bình", "Băng Chuột Cống", "npc:chuot", 34, 80},
-		{"Bến Xe Miền Đông", "Băng Cá Sấu", "npc:ca", 48, 110},
-		{"Karaoke Phượng Hoàng", "", "", 26, 70},
-		{"Quán Cô Ba", "", "", 22, 60},
-		{"Hẻm 47", "Băng Chuột Cống", "npc:chuot", 30, 75},
-		{"Xóm Liều", "Băng Rắn Độc", "npc:ran", 40, 95},
-		{"Cầu Đen", "", "", 24, 65},
-		{"Chợ Đêm", "Băng Cá Sấu", "npc:ca", 52, 120},
-		{"Bãi Giữ Xe", "", "", 18, 50},
-		{"Tiệm Sửa Xe", "Băng Ó Đen", "npc:o", 36, 88},
-		{"Ngã Tư Cá Lóc", "", "", 28, 72},
-		{"Khu Ổ Chuột", "Băng Chuột Cống", "npc:chuot", 42, 100},
-		{"Quán Nhậu Số 7", "", "", 20, 58},
-		{"Hẻm Cụt", "Băng Ó Đen", "npc:o", 32, 82},
-		{"Chung Cư Cũ", "", "", 25, 68},
-		{"Bến Phà", "Băng Cá Sấu", "npc:ca", 55, 125},
-		{"Chợ Cá", "", "", 30, 78},
-		{"Karaoke Bình Dân", "Băng Rắn Độc", "npc:ran", 44, 105},
-		{"Sòng Bạc", "Băng Rắn Độc", "npc:ran", 70, 150},
-		{"Xưởng In", "", "", 27, 74},
-		{"Bãi Rác", "Băng Chuột Cống", "npc:chuot", 38, 92},
-		{"Cầu Vượt", "Băng Ó Đen", "npc:o", 46, 115},
-		{"Sân Bóng", "", "", 23, 62},
-	}
-	out := make([]*Territory, len(defs))
-	for i, d := range defs {
-		out[i] = &Territory{
-			ID: i, Name: d.name, OwnerID: d.ownerID,
-			OwnerName: d.owner, Tax: d.tax, Defense: d.def,
+	out := make([]*Territory, 0, len(Provinces)*DistrictSize)
+	for pi, prov := range Provinces {
+		for k := 0; k < DistrictSize; k++ {
+			t := &Territory{
+				ID:         pi*DistrictSize + k,
+				ProvinceID: pi,
+				Province:   prov.Name,
+				Region:     prov.Region,
+				Name:       "Quận " + strconv.Itoa(k+1),
+				Tax:        16 + prov.Tax/4 + int64(k%4)*3,
+				Defense:    45 + k*3 + prov.Defense/12,
+			}
+			if g := npcOwnerFor(pi, k); g != "" {
+				t.OwnerID = g
+				t.OwnerName = npcGangs[g]
+			}
+			out = append(out, t)
 		}
 	}
 	return out
@@ -347,7 +492,7 @@ func (p *Player) TerritoryMultiplier() float64 {
 }
 
 func MaxTerritories(rankLevel int) int {
-	return 2 + rankLevel*2
+	return 4 + rankLevel*4
 }
 
 func TerritoryUpgradeCost(level int) int64 {
@@ -375,24 +520,68 @@ var Chapters = []ChapterDef{
 	{"Sài Gòn", "Giữ 8 ô và có 12.000 uy", "Ông Trùm Sài Gòn", 450, 8, 12000, 30000, 800, 400},
 }
 
-func (p *Player) BusinessRate(def BusinessDef) float64 {
-	lvl := p.Levels[def.ID]
+// RegionMul: cơ sở của vùng ăn theo số quận đang giữ (cap 1.5),
+// mỗi tỉnh giữ trọn trong vùng +10%.
+func (p *Player) RegionMul(region int) float64 {
+	if region < 0 || region >= len(RegionNames) {
+		return 1
+	}
+	m := 1 + 0.1*float64(p.RegionCount[region])
+	if m > 1.5 {
+		m = 1.5
+	}
+	full := 0
+	for i := range Provinces {
+		if Provinces[i].Region == region && p.CityHeld(i) {
+			full++
+		}
+	}
+	return m * (1 + 0.1*float64(full))
+}
+
+// HoldsRegion: vùng của Hồ Chí Minh là nhà, luôn làm ăn được; vùng khác cần 1 quận.
+func (p *Player) HoldsRegion(region int) bool {
+	if region < 0 || region >= len(RegionNames) {
+		return false
+	}
+	return region == HomeRegion() || p.RegionCount[region] > 0
+}
+
+func (p *Player) BizLevel(region int, id string) int { return p.Biz[region][id] }
+
+func (p *Player) HasBiz(id string) bool {
+	for r := range RegionNames {
+		if p.BizLevel(r, id) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Player) BusinessRate(def BusinessDef, region int) float64 {
+	if !p.HoldsRegion(region) {
+		return 0
+	}
+	lvl := p.BizLevel(region, def.ID)
 	if lvl == 0 {
 		return 0
 	}
 	racket := 1 + 0.15*float64(p.Racket[def.ID])
 	return float64(def.Base) * float64(lvl) * (1 + float64(p.Uy)/4000) *
-		p.TerritoryMultiplier() * (1 + p.DistrictBonus) * racket
+		p.RegionMul(region) * racket
 }
 
 func (p *Player) RatePerSec() float64 {
 	total := 0.0
-	for _, def := range BusinessDefs {
-		total += p.BusinessRate(def)
+	for r := range RegionNames {
+		for _, def := range BusinessDefs {
+			total += p.BusinessRate(def, r)
+		}
 	}
 	if p.Items["wave"] {
 		total *= 1.08
 	}
+	total *= p.WorkIncomeMul()
 	total *= 1 - p.HeatPenalty()
 	return total
 }

@@ -44,7 +44,7 @@ class _MapScreenState extends State<MapScreen> {
                         style: labelStyle(size: 11)),
                   if (s != null && s.districtHeld > 0)
                     Text(
-                      ' · ${s.districtHeld} quận +${(s.districtBonus * 100).round()}%',
+                      ' · ${s.districtHeld} thành +${(s.districtBonus * 100).round()}%',
                       style: labelStyle(size: 11, color: GH.gold),
                     ),
                   const Spacer(),
@@ -63,11 +63,9 @@ class _MapScreenState extends State<MapScreen> {
                 children: [
                   _legend(GH.muted, 'Trống'),
                   const SizedBox(width: 12),
-                  _legend(GH.pink, 'Của mày'),
+                  _legend(GH.red, 'Cờ: băng giữ ô'),
                   const SizedBox(width: 12),
-                  _legend(GH.cyan, 'Băng khác'),
-                  const SizedBox(width: 12),
-                  _legend(GH.green, 'Đồng minh'),
+                  _legend(GH.gold, 'Thành của mày'),
                   const Spacer(),
                   if (s != null)
                     Text('Lực ${s.power}',
@@ -93,7 +91,7 @@ class _MapScreenState extends State<MapScreen> {
                       territories: c.territories,
                       myId: s?.playerId ?? '',
                       myGangId: s?.gangId ?? '',
-                      onTap: _openTerritory,
+                      onTapProvince: _openProvince,
                     ),
             ),
           ],
@@ -134,6 +132,13 @@ class _MapScreenState extends State<MapScreen> {
               t.ownerGangId == s.gangId;
           final diff = s.power - t.defense;
           final outmatched = diff < 0;
+          CityInfo? city;
+          for (final ci in s.cities) {
+            if (ci.district == t.provinceId) {
+              city = ci;
+              break;
+            }
+          }
           return Container(
             decoration: const BoxDecoration(
               color: GH.panel,
@@ -142,9 +147,10 @@ class _MapScreenState extends State<MapScreen> {
             ),
             child: SafeArea(
               top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
-                child: Column(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
+                  child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -183,6 +189,20 @@ class _MapScreenState extends State<MapScreen> {
                     _row('Cấp địa bàn', '${t.level}/5', GH.cyan),
                     _row('Phòng thủ', '${t.defense}', GH.cyan),
                     _row('Lực của mày', '${s.power}', GH.pink),
+                    if (t.contested)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          mine
+                              ? 'ĐẤT CHƯA VỮNG · còn ${_clock(t.contestedUntil)} — chủ cũ đánh lại được, phòng thủ chỉ 60%'
+                              : 'ĐANG TRANH CHẤP · còn ${_clock(t.contestedUntil)} — phòng thủ yếu, đánh lấy lại dễ hơn',
+                          style: const TextStyle(
+                            color: GH.gold,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 12),
                     NeonPanel(
                       color: outmatched
@@ -216,6 +236,7 @@ class _MapScreenState extends State<MapScreen> {
                         ],
                       ),
                     ),
+                    if (city != null) _citySection(s, city, ctx, c),
                     const SizedBox(height: 16),
                     if (mine) ...[
                       PrimaryButton(
@@ -250,10 +271,254 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
             ),
+            ),
           );
         },
       ),
     );
+  }
+
+  void _openProvince(int provinceId) {
+    final c = widget.controller;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => AnimatedBuilder(
+        animation: c,
+        builder: (ctx, _) {
+          final s = c.state;
+          if (s == null) return const SizedBox.shrink();
+          final quans = c.territories
+              .where((t) => t.provinceId == provinceId)
+              .toList()
+            ..sort((a, b) => a.id.compareTo(b.id));
+          CityInfo? city;
+          for (final ci in s.cities) {
+            if (ci.district == provinceId) {
+              city = ci;
+              break;
+            }
+          }
+          final name = city?.name ??
+              (quans.isNotEmpty ? quans.first.province : 'Tỉnh');
+          return Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.82,
+            ),
+            decoration: const BoxDecoration(
+              color: GH.panel,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              border: Border(top: BorderSide(color: GH.line)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 38,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: GH.line,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'TỈNH ${name.toUpperCase()}',
+                        style: const TextStyle(
+                            fontSize: 17, fontWeight: FontWeight.w900),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        city == null
+                            ? 'Chưa có dữ liệu tỉnh'
+                            : '${city.held}/${city.total} quận'
+                                ' · ${city.mine ? 'THÀNH CỦA MÀY' : 'chưa giữ trọn tỉnh'}',
+                        style: labelStyle(
+                          size: 11.5,
+                          color: city?.mine == true ? GH.gold : GH.muted,
+                        ),
+                      ),
+                      if (city != null) ...[
+                        const SizedBox(height: 10),
+                        _citySection(s, city, ctx, c),
+                      ],
+                      const SizedBox(height: 10),
+                      for (final t in quans) _quanRow(ctx, t, s),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _quanRow(BuildContext sheetContext, Territory t, PlayerState s) {
+    final mine = s.playerId.isNotEmpty && t.ownerId == 'p:${s.playerId}';
+    final neutral = t.ownerName.isEmpty;
+    final color = mine ? GH.pink : (neutral ? GH.muted : GH.gold);
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(sheetContext).pop();
+        _openTerritory(t);
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: GH.panel2,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: GH.line),
+        ),
+        child: Row(
+          children: [
+            Text(t.name,
+                style: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w800)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                neutral ? 'Trống' : t.ownerName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: labelStyle(size: 10),
+              ),
+            ),
+            if (t.contested)
+              const Icon(Icons.timer_rounded, size: 13, color: GH.gold),
+            const SizedBox(width: 6),
+            Text('thủ ${t.defense}', style: labelStyle(size: 9.5)),
+            const SizedBox(width: 8),
+            Text(
+              mine ? 'CỦA MÀY' : 'ĐÁNH',
+              style: TextStyle(
+                  color: color, fontSize: 10, fontWeight: FontWeight.w900),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _citySection(
+    PlayerState s,
+    CityInfo city,
+    BuildContext sheetContext,
+    GameController c,
+  ) {
+    return NeonPanel(
+      color: city.mine ? const Color(0xFF10241C) : const Color(0xFF16161A),
+      borderColor: city.mine ? GH.green : GH.line,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.location_city_rounded,
+                size: 15,
+                color: city.mine ? GH.green : GH.muted,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'THÀNH ${city.name.toUpperCase()}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.6,
+                    color: city.mine ? GH.green : GH.muted,
+                  ),
+                ),
+              ),
+              Text('${city.held}/${city.total} ô', style: labelStyle(size: 10.5)),
+            ],
+          ),
+          if (!city.mine)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Giữ trọn ${city.total} ô của quận để mở công trình',
+                style: labelStyle(size: 10.5),
+              ),
+            )
+          else ...[
+            if (city.goodsRate > 0 || city.incomeMul > 1 || city.defense > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '+${city.goodsRate.round()} hàng/s'
+                  ' · +${((city.incomeMul - 1) * 100).round()}% thu nhập'
+                  ' · +${city.defense} thủ',
+                  style: labelStyle(size: 10.5, color: GH.cyan),
+                ),
+              ),
+            const SizedBox(height: 8),
+            for (final def in s.works) _workRow(s, city, def, sheetContext, c),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _workRow(
+    PlayerState s,
+    CityInfo city,
+    WorkInfo def,
+    BuildContext sheetContext,
+    GameController c,
+  ) {
+    final work = city.work(def.id);
+    final level = work?.level ?? 0;
+    final cost = work?.cost ?? 0;
+    final maxed = level >= def.maxLevel;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${def.name} · cấp $level/${def.maxLevel}',
+                  style: const TextStyle(
+                      fontSize: 11.5, fontWeight: FontWeight.w800),
+                ),
+                Text(def.desc, style: labelStyle(size: 10)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          PrimaryButton(
+            label: maxed ? 'MAX' : formatMoney(cost),
+            height: 32,
+            color: GH.cyan,
+            enabled: !maxed && s.money >= cost && !c.busy,
+            onTap: maxed ? null : () => _build(sheetContext, city, def),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _clock(int until) {
+    final left = until - DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (left <= 0) return '0:00';
+    return '${left ~/ 60}:${(left % 60).toString().padLeft(2, '0')}';
   }
 
   Widget _row(String label, String value, Color color) {
@@ -276,6 +541,22 @@ class _MapScreenState extends State<MapScreen> {
       await widget.controller.upgradeTerritory(t.id);
       if (sheetContext.mounted) Navigator.of(sheetContext).pop();
       if (mounted) showToast(context, 'Địa bàn lên cấp ${t.level + 1}');
+    } on ApiException catch (e) {
+      if (sheetContext.mounted) {
+        showToast(sheetContext, e.message, error: true);
+      }
+    }
+  }
+
+  Future<void> _build(
+    BuildContext sheetContext,
+    CityInfo city,
+    WorkInfo def,
+  ) async {
+    try {
+      await widget.controller.buildWork(city.district, def.id);
+      if (sheetContext.mounted) Navigator.of(sheetContext).pop();
+      if (mounted) showToast(context, '${def.name} lên cấp');
     } on ApiException catch (e) {
       if (sheetContext.mounted) {
         showToast(sheetContext, e.message, error: true);

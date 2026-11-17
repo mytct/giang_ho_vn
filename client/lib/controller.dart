@@ -114,8 +114,8 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> upgrade(String businessId) => _guard(() async {
-        state = await api.upgrade(businessId);
+  Future<void> upgrade(String businessId, int district) => _guard(() async {
+        state = await api.upgrade(businessId, district);
       });
 
   Future<void> recruit() => _guard(() async {
@@ -176,6 +176,10 @@ class GameController extends ChangeNotifier {
         territories = payload.territories;
       });
 
+  Future<void> buildWork(int district, String work) => _guard(() async {
+        state = await api.buildWork(district, work);
+      });
+
   Future<void> loadCampaign() async {
     final (list, current) = await api.campaign();
     chapters = list;
@@ -209,8 +213,9 @@ class GameController extends ChangeNotifier {
         chapterIndex = current;
       });
 
-  Future<void> assignGuard(int territory, int count) => _guard(() async {
-        state = await api.assignGuard(territory, count);
+  Future<void> assignGuard(int territory, int crew, int minions) =>
+      _guard(() async {
+        state = await api.assignGuard(territory, crew, minions);
       });
 
   Future<void> setFormation(String kind) => _guard(() async {

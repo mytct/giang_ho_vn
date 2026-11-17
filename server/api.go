@@ -182,9 +182,10 @@ func registerRoutes(mux *http.ServeMux, st *Store) {
 		var body struct {
 			Token    string `json:"token"`
 			Business string `json:"business"`
+			District int    `json:"district"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		state, err := st.UpgradeBusiness(body.Token, body.Business)
+		state, err := st.UpgradeBusiness(body.Token, body.Business, body.District)
 		if err != nil {
 			fail(w, 400, err.Error())
 			return
@@ -340,6 +341,21 @@ func registerRoutes(mux *http.ServeMux, st *Store) {
 		writeJSON(w, 200, map[string]any{"state": state})
 	})
 
+	mux.HandleFunc("POST /api/city/build", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token    string `json:"token"`
+			District int    `json:"district"`
+			Work     string `json:"work"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state, err := st.BuildWork(body.Token, body.District, body.Work)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"state": state})
+	})
+
 	mux.HandleFunc("GET /api/campaign", func(w http.ResponseWriter, r *http.Request) {
 		chapters, current, err := st.Campaign(readToken(r))
 		if err != nil {
@@ -380,10 +396,11 @@ func registerRoutes(mux *http.ServeMux, st *Store) {
 		var body struct {
 			Token     string `json:"token"`
 			Territory int    `json:"territory"`
-			Count     int    `json:"count"`
+			Crew      int    `json:"crew"`
+			Minions   int    `json:"minions"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		state, err := st.AssignGuard(body.Token, body.Territory, body.Count)
+		state, err := st.AssignGuard(body.Token, body.Territory, body.Crew, body.Minions)
 		if err != nil {
 			fail(w, 400, err.Error())
 			return
