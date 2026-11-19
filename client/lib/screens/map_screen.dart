@@ -61,12 +61,21 @@ class _MapScreenState extends State<MapScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  _legend(GH.muted, 'Trống'),
-                  const SizedBox(width: 12),
-                  _legend(GH.red, 'Cờ: băng giữ ô'),
-                  const SizedBox(width: 12),
-                  _legend(GH.gold, 'Thành của mày'),
-                  const Spacer(),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          _legend(GH.muted, 'Trống'),
+                          for (final row in _gangLegend())
+                            Padding(
+                              padding: const EdgeInsets.only(left: 12),
+                              child: _legend(row.$1, row.$2),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
                   if (s != null)
                     Text('Lực ${s.power}',
                         style: labelStyle(size: 11, color: GH.pink)),
@@ -91,7 +100,7 @@ class _MapScreenState extends State<MapScreen> {
                       territories: c.territories,
                       myId: s?.playerId ?? '',
                       myGangId: s?.gangId ?? '',
-                      onTapProvince: _openProvince,
+                      onTapTerritory: _openTerritoryById,
                     ),
             ),
           ],
@@ -113,6 +122,43 @@ class _MapScreenState extends State<MapScreen> {
         Text(text, style: labelStyle(size: 10)),
       ],
     );
+  }
+
+  List<(Color, String)> _gangLegend() {
+    final counts = <String, int>{};
+    final names = <String, String>{};
+    for (final t in widget.controller.territories) {
+      final key = territoryGroup(t);
+      if (key.isEmpty) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+      names.putIfAbsent(key, () => t.ownerName);
+    }
+    final top = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final s = widget.controller.state;
+    return [
+      for (final e in top.take(3))
+        (
+          gangColor(
+            e.key,
+            myId: s?.playerId ?? '',
+            myGangId: s?.gangId ?? '',
+          ),
+          _shortName(names[e.key] ?? '?'),
+        ),
+    ];
+  }
+
+  String _shortName(String name) =>
+      name.length <= 12 ? name : '${name.substring(0, 11)}…';
+
+  void _openTerritoryById(int id) {
+    for (final t in widget.controller.territories) {
+      if (t.id == id) {
+        _openTerritory(t);
+        return;
+      }
+    }
   }
 
   void _openTerritory(Territory t) {
@@ -165,7 +211,8 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Text(t.name,
+                    Text(t.fullName,
+                        maxLines: 2,
                         style: const TextStyle(
                             fontSize: 18, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 4),
@@ -274,138 +321,6 @@ class _MapScreenState extends State<MapScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  void _openProvince(int provinceId) {
-    final c = widget.controller;
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => AnimatedBuilder(
-        animation: c,
-        builder: (ctx, _) {
-          final s = c.state;
-          if (s == null) return const SizedBox.shrink();
-          final quans = c.territories
-              .where((t) => t.provinceId == provinceId)
-              .toList()
-            ..sort((a, b) => a.id.compareTo(b.id));
-          CityInfo? city;
-          for (final ci in s.cities) {
-            if (ci.district == provinceId) {
-              city = ci;
-              break;
-            }
-          }
-          final name = city?.name ??
-              (quans.isNotEmpty ? quans.first.province : 'Tỉnh');
-          return Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(ctx).size.height * 0.82,
-            ),
-            decoration: const BoxDecoration(
-              color: GH.panel,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              border: Border(top: BorderSide(color: GH.line)),
-            ),
-            child: SafeArea(
-              top: false,
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 38,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: GH.line,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        'TỈNH ${name.toUpperCase()}',
-                        style: const TextStyle(
-                            fontSize: 17, fontWeight: FontWeight.w900),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        city == null
-                            ? 'Chưa có dữ liệu tỉnh'
-                            : '${city.held}/${city.total} quận'
-                                ' · ${city.mine ? 'THÀNH CỦA MÀY' : 'chưa giữ trọn tỉnh'}',
-                        style: labelStyle(
-                          size: 11.5,
-                          color: city?.mine == true ? GH.gold : GH.muted,
-                        ),
-                      ),
-                      if (city != null) ...[
-                        const SizedBox(height: 10),
-                        _citySection(s, city, ctx, c),
-                      ],
-                      const SizedBox(height: 10),
-                      for (final t in quans) _quanRow(ctx, t, s),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _quanRow(BuildContext sheetContext, Territory t, PlayerState s) {
-    final mine = s.playerId.isNotEmpty && t.ownerId == 'p:${s.playerId}';
-    final neutral = t.ownerName.isEmpty;
-    final color = mine ? GH.pink : (neutral ? GH.muted : GH.gold);
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(sheetContext).pop();
-        _openTerritory(t);
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          color: GH.panel2,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: GH.line),
-        ),
-        child: Row(
-          children: [
-            Text(t.name,
-                style: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w800)),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                neutral ? 'Trống' : t.ownerName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: labelStyle(size: 10),
-              ),
-            ),
-            if (t.contested)
-              const Icon(Icons.timer_rounded, size: 13, color: GH.gold),
-            const SizedBox(width: 6),
-            Text('thủ ${t.defense}', style: labelStyle(size: 9.5)),
-            const SizedBox(width: 8),
-            Text(
-              mine ? 'CỦA MÀY' : 'ĐÁNH',
-              style: TextStyle(
-                  color: color, fontSize: 10, fontWeight: FontWeight.w900),
-            ),
-          ],
-        ),
       ),
     );
   }

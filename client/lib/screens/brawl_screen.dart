@@ -160,7 +160,7 @@ class _ResultPanel extends StatelessWidget {
               Expanded(
                 child: Text(
                   win
-                      ? 'CHIẾM ĐƯỢC ${result.territoryName}'
+                      ? 'CHIẾM ĐƯỢC ${result.territoryLabel}'
                       : 'THUA RỒI ĐẠI CA',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

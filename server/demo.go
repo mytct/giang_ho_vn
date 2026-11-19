@@ -149,12 +149,13 @@ func (s *Store) SeedDemo() map[string]string {
 	defenseID := token()
 	lostID := homeBase + 8
 	lostName := s.territories[lostID].Name
+	lostProv := s.territories[lostID].Province
 	a.Defenses = []DefenseRecord{{
 		ID: defenseID, At: now.Add(-5 * time.Minute).Unix(),
 		AttackerName: "Ó Đen", TerritoryID: lostID, TerritoryName: lostName,
 		Result: BrawlResult{
 			Win: false, Power: a.Power(), Defense: e.Power(),
-			TerritoryID: lostID, TerritoryName: lostName,
+			TerritoryID: lostID, TerritoryName: lostName, TerritoryProvince: lostProv,
 			Events: []BrawlEvent{
 				{At: 0, Side: "enemy", Dmg: 18, MyHp: 250, EnemyHp: 300},
 				{At: 380, Side: "me", Dmg: 12, MyHp: 250, EnemyHp: 288},
@@ -169,7 +170,7 @@ func (s *Store) SeedDemo() map[string]string {
 	s.recalcLandLocked(e)
 	a.addInbox(InboxMsg{
 		ID: token(), Kind: "attack", At: now.Add(-5 * time.Minute).Unix(),
-		Text:         "Ó Đen chém mất " + lostName + " của mày",
+		Text:         "Ó Đen chém mất " + s.territories[lostID].Label() + " của mày",
 		FromName:     "Ó Đen",
 		TerritoryID:  lostID,
 		BattleID:     defenseID,

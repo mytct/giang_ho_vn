@@ -57,6 +57,7 @@ class GuardSlot {
     required this.count,
     required this.tax,
     this.minions = 0,
+    this.province = '',
   });
 
   final int territoryId;
@@ -64,10 +65,14 @@ class GuardSlot {
   final int count;
   final int tax;
   final int minions;
+  final String province;
+
+  String get fullName => province.isEmpty ? name : '$province · $name';
 
   factory GuardSlot.fromJson(Map<String, dynamic> j) => GuardSlot(
         territoryId: asInt(j['territoryId']),
         name: j['name'] as String? ?? '',
+        province: j['province'] as String? ?? '',
         count: asInt(j['count']),
         tax: asInt(j['tax']),
         minions: asInt(j['minions']),
@@ -1036,6 +1041,10 @@ class Territory {
   bool get isNeutral => ownerId.isEmpty;
   bool get isMine => ownerId.startsWith('p:');
 
+  /// Tên đầy đủ kèm tỉnh — tỉnh nào cũng có Quận 1..12, gọi trần "Quận 1" thì
+  /// không phân biệt được ô nào.
+  String get fullName => province.isEmpty ? name : '$province · $name';
+
   factory Territory.fromJson(Map<String, dynamic> j) => Territory(
         id: asInt(j['id']),
         name: j['name'] as String? ?? '',
@@ -1094,6 +1103,7 @@ class BrawlResult {
     this.wounded = 0,
     required this.territoryId,
     required this.territoryName,
+    this.territoryProvince = '',
     required this.xp,
     required this.levelups,
     required this.levelupMoney,
@@ -1114,6 +1124,7 @@ class BrawlResult {
   final int wounded;
   final int territoryId;
   final String territoryName;
+  final String territoryProvince;
   final int xp;
   final int levelups;
   final int levelupMoney;
@@ -1123,6 +1134,11 @@ class BrawlResult {
   final double prestigeMultiplier;
   final bool canPrestige;
   final int chapter;
+
+  /// "Đồng Nai · Quận 1" — tỉnh nào cũng có Quận 1..12 nên tên trần là mơ hồ.
+  String get territoryLabel => territoryProvince.isEmpty
+      ? territoryName
+      : '$territoryProvince · $territoryName';
 
   factory BrawlResult.fromJson(Map<String, dynamic> j) => BrawlResult(
         win: j['win'] as bool? ?? false,
@@ -1136,6 +1152,7 @@ class BrawlResult {
         wounded: asInt(j['wounded']),
         territoryId: asInt(j['territoryId']),
         territoryName: j['territoryName'] as String? ?? '',
+        territoryProvince: j['territoryProvince'] as String? ?? '',
         xp: asInt(j['xp']),
         levelups: asInt(j['levelups']),
         levelupMoney: asInt(j['levelupMoney']),

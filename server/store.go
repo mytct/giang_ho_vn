@@ -183,6 +183,7 @@ type DefenseRecord struct {
 type GuardSlot struct {
 	TerritoryID int    `json:"territoryId"`
 	Name        string `json:"name"`
+	Province    string `json:"province"`
 	Count       int    `json:"count"`
 	Minions     int    `json:"minions"`
 	Tax         int64  `json:"tax"`
@@ -510,19 +511,20 @@ type BrawlEvent struct {
 }
 
 type BrawlResult struct {
-	Win           bool         `json:"win"`
-	Events        []BrawlEvent `json:"events"`
-	Reward        int64        `json:"reward"`
-	UyGain        int64        `json:"uyGain"`
-	Bounty        int64        `json:"bounty"`
-	XP            int64        `json:"xp"`
-	Levelups      int          `json:"levelups"`
-	LevelupMoney  int64        `json:"levelupMoney"`
-	Power         int          `json:"power"`
-	Defense       int          `json:"defense"`
-	Wounded       int          `json:"wounded"`
-	TerritoryID   int          `json:"territoryId"`
-	TerritoryName string       `json:"territoryName"`
+	Win               bool         `json:"win"`
+	Events            []BrawlEvent `json:"events"`
+	Reward            int64        `json:"reward"`
+	UyGain            int64        `json:"uyGain"`
+	Bounty            int64        `json:"bounty"`
+	XP                int64        `json:"xp"`
+	Levelups          int          `json:"levelups"`
+	LevelupMoney      int64        `json:"levelupMoney"`
+	Power             int          `json:"power"`
+	Defense           int          `json:"defense"`
+	Wounded           int          `json:"wounded"`
+	TerritoryID       int          `json:"territoryId"`
+	TerritoryName     string       `json:"territoryName"`
+	TerritoryProvince string       `json:"territoryProvince"`
 }
 
 type fighter struct {
@@ -1615,7 +1617,7 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 
 	res := BrawlResult{
 		Power: power, Defense: defense,
-		TerritoryID: id, TerritoryName: t.Name,
+		TerritoryID: id, TerritoryName: t.Name, TerritoryProvince: t.Province,
 	}
 	res.Events, res.Win = simulateBrawl(fighter{
 		hp: hpMe, hitDmg: myHitDmg, critEvery: critEvery,
@@ -1721,7 +1723,7 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 			}
 			defender.addInbox(InboxMsg{
 				ID: token(), Kind: "attack", At: now.Unix(),
-				Text:     fmt.Sprintf("%s chém mất %s — còn 5 phút đánh lại", p.Name, t.Name),
+				Text:     fmt.Sprintf("%s chém mất %s — còn 5 phút đánh lại", p.Name, t.Label()),
 				FromName: p.Name, TerritoryID: t.ID, BattleID: recordID,
 				RevengeUntil: now.Add(lossShield).Unix(),
 			})
@@ -2990,13 +2992,13 @@ func (s *Store) tickNPCsLocked(now time.Time) {
 			owner.addInbox(InboxMsg{
 				ID: token(), Kind: "npc", At: now.Unix(), TerritoryID: r.TerritoryID,
 				Text: fmt.Sprintf("%s kéo quân đòi lại %s. Đất đã mất.",
-					npcGangs[r.GangID], t.Name),
+					npcGangs[r.GangID], t.Label()),
 			})
 		} else {
 			owner.addInbox(InboxMsg{
 				ID: token(), Kind: "npc", At: now.Unix(), TerritoryID: r.TerritoryID,
 				Text: fmt.Sprintf("%s kéo tới đòi %s nhưng bị đánh lui.",
-					npcGangs[r.GangID], t.Name),
+					npcGangs[r.GangID], t.Label()),
 			})
 		}
 	}
@@ -3216,8 +3218,8 @@ func (s *Store) guardSlotsLocked(p *Player) []GuardSlot {
 			continue
 		}
 		out = append(out, GuardSlot{
-			TerritoryID: i, Name: t.Name, Count: p.Guards[i],
-			Minions: p.MinionGuards[i], Tax: t.Tax,
+			TerritoryID: i, Name: t.Name, Province: t.Province,
+			Count: p.Guards[i], Minions: p.MinionGuards[i], Tax: t.Tax,
 		})
 	}
 	return out

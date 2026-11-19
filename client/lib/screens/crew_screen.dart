@@ -909,7 +909,7 @@ class _GuardRow extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(slot.name,
+                child: Text(slot.fullName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(

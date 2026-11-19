@@ -5,12 +5,11 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../scene/paint_utils.dart';
 import '../theme.dart';
+import 'quan_geo.dart';
 import 'vn_map_data.dart';
 
 const double _mapW = 900;
 const double _mapH = 1600;
-
-const int _quanPerProvince = 12;
 
 const Map<String, Color> _npcGangColors = {
   'npc:ran': Color(0xFF3EE08F),
@@ -29,14 +28,17 @@ const List<Color> _gangPalette = [
   Color(0xFF4DA3FF),
 ];
 
-String _groupOf(Territory t) =>
+/// Khoá nhóm chủ sở hữu dùng để tô màu: cùng băng (hoặc cùng tay chơi khi
+/// chưa có băng) thì cùng màu.
+String territoryGroup(Territory t) =>
     t.ownerGangId.isNotEmpty ? t.ownerGangId : t.ownerId;
 
-Color _groupColor(String key, String myGangId) {
+Color gangColor(String key, {String myId = '', String myGangId = ''}) {
   if (key.isEmpty) return GH.muted;
+  if (myGangId.isNotEmpty && key == myGangId) return GH.pink;
+  if (myId.isNotEmpty && key == 'p:$myId') return GH.pink;
   final npc = _npcGangColors[key];
   if (npc != null) return npc;
-  if (myGangId.isNotEmpty && key == myGangId) return GH.pink;
   var h = 0;
   for (final c in key.codeUnits) {
     h = (h * 31 + c) & 0x7fffffff;
@@ -44,20 +46,27 @@ Color _groupColor(String key, String myGangId) {
   return _gangPalette[h % _gangPalette.length];
 }
 
-class _ProvinceInfo {
-  _ProvinceInfo({
-    required this.color,
-    required this.label,
-    required this.count,
-    required this.mine,
-    required this.quans,
-  });
+final Map<int, List<List<Offset>>> _layoutCache = {};
 
-  final Color color;
-  final String label;
-  final int count;
-  final bool mine;
-  final List<Territory> quans;
+List<List<Offset>> provinceDistricts(int province) {
+  return _layoutCache.putIfAbsent(province, () {
+    final rings = vnProvinces[province].rings;
+    if (rings.isEmpty) return const <List<Offset>>[];
+    var main = rings.first;
+    for (final r in rings) {
+      if (polygonArea(r) > polygonArea(main)) main = r;
+    }
+    return partitionProvincePolygon(main);
+  });
+}
+
+Path _ringPath(List<Offset> ring, Size size) {
+  final path = Path()
+    ..moveTo(ring[0].dx * size.width, ring[0].dy * size.height);
+  for (var i = 1; i < ring.length; i++) {
+    path.lineTo(ring[i].dx * size.width, ring[i].dy * size.height);
+  }
+  return path..close();
 }
 
 class RpgMapView extends StatefulWidget {
@@ -66,13 +75,13 @@ class RpgMapView extends StatefulWidget {
     required this.territories,
     required this.myId,
     required this.myGangId,
-    required this.onTapProvince,
+    required this.onTapTerritory,
   });
 
   final List<Territory> territories;
   final String myId;
   final String myGangId;
-  final ValueChanged<int> onTapProvince;
+  final ValueChanged<int> onTapTerritory;
 
   @override
   State<RpgMapView> createState() => _RpgMapViewState();
@@ -128,45 +137,26 @@ class _RpgMapViewState extends State<RpgMapView> {
     _controller.value = zoom * _controller.value;
   }
 
-  List<_ProvinceInfo> _infos() {
-    final byProvince = <int, List<Territory>>{};
-    for (final t in widget.territories) {
-      byProvince.putIfAbsent(t.provinceId, () => []).add(t);
-    }
-    final out = <_ProvinceInfo>[];
+  int _districtAt(Offset local) {
+    const size = Size(_mapW, _mapH);
     for (var i = 0; i < vnProvinces.length; i++) {
-      final quans = byProvince[i] ?? const <Territory>[];
-      final counts = <String, int>{};
-      final names = <String, String>{};
-      for (final t in quans) {
-        final key = _groupOf(t);
-        if (key.isEmpty) continue;
-        counts[key] = (counts[key] ?? 0) + 1;
-        names.putIfAbsent(key, () => t.ownerName);
+      final layout = provinceDistricts(i);
+      for (var slot = 0; slot < layout.length; slot++) {
+        final rings = layout[slot];
+        if (rings.length < 3) continue;
+        if (_ringPath(rings, size).contains(local)) {
+          return i * quanPerProvince + slot;
+        }
       }
-      if (counts.isEmpty) {
-        out.add(_ProvinceInfo(
-          color: GH.muted,
-          label: 'ĐẤT TRỐNG',
-          count: 0,
-          mine: false,
-          quans: quans,
-        ));
-        continue;
-      }
-      final top = counts.entries.reduce((a, b) => a.value >= b.value ? a : b);
-      final mine = quans.where((t) {
-        return widget.myId.isNotEmpty && t.ownerId == 'p:${widget.myId}';
-      }).length;
-      out.add(_ProvinceInfo(
-        color: _groupColor(top.key, widget.myGangId),
-        label: names[top.key] ?? '?',
-        count: top.value,
-        mine: mine >= _quanPerProvince,
-        quans: quans,
-      ));
     }
-    return out;
+    return -1;
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    final id = _districtAt(details.localPosition);
+    if (id < 0) return;
+    setState(() => _selected = id);
+    widget.onTapTerritory(id);
   }
 
   @override
@@ -180,7 +170,9 @@ class _RpgMapViewState extends State<RpgMapView> {
             if (mounted) _fit();
           });
         }
-        final infos = _infos();
+        final byId = <int, Territory>{
+          for (final t in widget.territories) t.id: t,
+        };
         return Stack(
           children: [
             Positioned.fill(
@@ -200,40 +192,24 @@ class _RpgMapViewState extends State<RpgMapView> {
                 boundaryMargin: const EdgeInsets.all(300),
                 minScale: 0.3,
                 maxScale: 6,
-                child: Container(
+                child: SizedBox(
                   width: _mapW,
                   height: _mapH,
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: GH.line.withValues(alpha: 0.8),
-                      width: 2,
-                    ),
-                  ),
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: CustomPaint(
-                          painter: _MapPainter(
-                            infos: infos,
-                            selected: _selected,
-                            showLabels: _scale > 0.62,
-                          ),
-                        ),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTapUp: _onTapUp,
+                    child: CustomPaint(
+                      size: const Size(_mapW, _mapH),
+                      painter: _MapPainter(
+                        territories: byId,
+                        myId: widget.myId,
+                        myGangId: widget.myGangId,
+                        selected: _selected,
+                        showProvinceLabels: _scale > 0.62 && _scale <= 2.2,
+                        showDistrictLabels: _scale > 1.25,
+                        showTileProvince: _scale > 2.2,
                       ),
-                      for (var i = 0; i < vnProvinces.length; i++)
-                        Positioned(
-                          left: vnProvinces[i].cx * _mapW - 22,
-                          top: vnProvinces[i].cy * _mapH - 22,
-                          child: _ProvinceBadge(
-                            info: infos[i],
-                            selected: _selected == i,
-                            onTap: () {
-                              setState(() => _selected = i);
-                              widget.onTapProvince(i);
-                            },
-                          ),
-                        ),
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -249,7 +225,7 @@ class _RpgMapViewState extends State<RpgMapView> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: GH.line),
                 ),
-                child: Text('Chạm tỉnh để xem 12 quận · kéo & zoom',
+                child: Text('Chạm một quận để chém · kéo & zoom',
                     style: labelStyle(size: 9)),
               ),
             ),
@@ -292,93 +268,24 @@ class _RpgMapViewState extends State<RpgMapView> {
   }
 }
 
-class _ProvinceBadge extends StatelessWidget {
-  const _ProvinceBadge({
-    required this.info,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final _ProvinceInfo info;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = info.mine ? GH.gold : info.color;
-    final initial = info.label.trim().isEmpty
-        ? '?'
-        : info.label.trim()[0].toUpperCase();
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: const Color(0xD9080B10),
-          border: Border.all(
-            color: color,
-            width: selected ? 3 : 1.6,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: selected ? 0.55 : 0.25),
-              blurRadius: selected ? 16 : 8,
-            ),
-          ],
-        ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            Text(
-              initial,
-              style: TextStyle(
-                color: color,
-                fontSize: 15,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            if (info.count > 0)
-              Positioned(
-                bottom: -6,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: GH.red,
-                    borderRadius: BorderRadius.circular(3),
-                    border: Border.all(color: Colors.black, width: 1),
-                  ),
-                  child: Text(
-                    '${info.count}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 8,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _MapPainter extends CustomPainter {
   const _MapPainter({
-    required this.infos,
+    required this.territories,
+    required this.myId,
+    required this.myGangId,
     required this.selected,
-    required this.showLabels,
+    required this.showProvinceLabels,
+    required this.showDistrictLabels,
+    required this.showTileProvince,
   });
 
-  final List<_ProvinceInfo> infos;
+  final Map<int, Territory> territories;
+  final String myId;
+  final String myGangId;
   final int selected;
-  final bool showLabels;
+  final bool showProvinceLabels;
+  final bool showDistrictLabels;
+  final bool showTileProvince;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -394,51 +301,10 @@ class _MapPainter extends CustomPainter {
         ).createShader(rect),
     );
     _sea(canvas, size, rnd);
-
-    for (var i = 0; i < vnProvinces.length; i++) {
-      final prov = vnProvinces[i];
-      final info = infos[i];
-      final color = info.mine ? GH.gold : info.color;
-      final paths = <Path>[];
-      for (final ring in prov.rings) {
-        if (ring.length < 3) continue;
-        final p = Path()
-          ..moveTo(ring[0].dx * size.width, ring[0].dy * size.height);
-        for (var k = 1; k < ring.length; k++) {
-          p.lineTo(ring[k].dx * size.width, ring[k].dy * size.height);
-        }
-        paths.add(p..close());
-      }
-      for (final path in paths) {
-        canvas.drawPath(
-          path,
-          Paint()
-            ..color = color.withValues(alpha: 0.10)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
-        );
-        canvas.drawPath(
-          path,
-          Paint()..color = color.withValues(alpha: info.count > 0 ? 0.34 : 0.12),
-        );
-        canvas.drawPath(
-          path,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = selected == i ? 3.2 : 1.2
-            ..color = color.withValues(alpha: selected == i ? 1 : 0.7),
-        );
-      }
-      if (showLabels) {
-        paintText(
-          canvas,
-          prov.name.toUpperCase(),
-          Offset(prov.cx * size.width, prov.cy * size.height + 26),
-          size: 8,
-          color: Colors.white.withValues(alpha: 0.92),
-          weight: FontWeight.w900,
-          align: TextAlign.center,
-        );
-      }
+    _districts(canvas, size);
+    _provinceBorders(canvas, size);
+    if (showProvinceLabels || showDistrictLabels) {
+      _labels(canvas, size);
     }
 
     _grain(canvas, size, rnd);
@@ -450,6 +316,158 @@ class _MapPainter extends CustomPainter {
           colors: [Colors.transparent, Color(0xAA000000)],
         ).createShader(rect),
     );
+  }
+
+  void _districts(Canvas canvas, Size size) {
+    for (var i = 0; i < vnProvinces.length; i++) {
+      final layout = provinceDistricts(i);
+      if (layout.isEmpty) continue;
+      for (var slot = 0; slot < layout.length; slot++) {
+        final t = territories[i * quanPerProvince + slot];
+        final key = t == null ? '' : territoryGroup(t);
+        final owned = key.isNotEmpty;
+        final color = gangColor(key, myId: myId, myGangId: myGangId);
+        final path = _ringPath(layout[slot], size);
+        final isSelected = selected == i * quanPerProvince + slot;
+
+        if (isSelected) {
+          canvas.drawPath(
+            path,
+            Paint()
+              ..color = GH.gold.withValues(alpha: 0.55)
+              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 10),
+          );
+        }
+        canvas.drawPath(
+          path,
+          Paint()
+            ..color = owned
+                ? color.withValues(alpha: 0.46)
+                : GH.panel2.withValues(alpha: 0.55),
+        );
+        canvas.drawPath(
+          path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = isSelected ? 2.4 : 0.8
+            ..color = isSelected
+                ? GH.gold
+                : GH.ink.withValues(alpha: owned ? 0.9 : 0.65),
+        );
+      }
+
+      // Đảo/khúc rời của tỉnh: tô theo quận gần nhất để vẫn đúng màu băng.
+      final rings = vnProvinces[i].rings;
+      if (rings.length > 1 && layout.isNotEmpty) {
+        final centers = [for (final r in layout) interiorPoint(r)];
+        final main = _mainRing(rings);
+        for (final ring in rings) {
+          if (identical(ring, main) || ring.length < 3) continue;
+          final c = polygonCentroid(ring);
+          var best = 0;
+          var bestDist = double.infinity;
+          for (var k = 0; k < centers.length; k++) {
+            final d = (centers[k] - c).distanceSquared;
+            if (d < bestDist) {
+              bestDist = d;
+              best = k;
+            }
+          }
+          final t = territories[i * quanPerProvince + best];
+          final key = t == null ? '' : territoryGroup(t);
+          final color = gangColor(key, myId: myId, myGangId: myGangId);
+          final path = _ringPath(ring, size);
+          canvas.drawPath(
+            path,
+            Paint()..color = color.withValues(alpha: key.isEmpty ? 0.2 : 0.4),
+          );
+          canvas.drawPath(
+            path,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 0.8
+              ..color = GH.ink.withValues(alpha: 0.8),
+          );
+        }
+      }
+    }
+  }
+
+  List<Offset> _mainRing(List<List<Offset>> rings) {
+    var main = rings.first;
+    for (final r in rings) {
+      if (polygonArea(r) > polygonArea(main)) main = r;
+    }
+    return main;
+  }
+
+  void _provinceBorders(Canvas canvas, Size size) {
+    final border = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.3
+      ..color = Color(0xFF7FE7FF).withValues(alpha: 0.5);
+    for (final prov in vnProvinces) {
+      for (final ring in prov.rings) {
+        if (ring.length < 3) continue;
+        canvas.drawPath(_ringPath(ring, size), border);
+      }
+    }
+  }
+
+  void _labels(Canvas canvas, Size size) {
+    for (var i = 0; i < vnProvinces.length; i++) {
+      final prov = vnProvinces[i];
+      if (showProvinceLabels && !showDistrictLabels) {
+        paintText(
+          canvas,
+          prov.name.toUpperCase(),
+          Offset(prov.cx * size.width, prov.cy * size.height + 26),
+          size: 8,
+          color: Colors.white.withValues(alpha: 0.92),
+          weight: FontWeight.w900,
+          align: TextAlign.center,
+          glow: Colors.black,
+          glowBlur: 3,
+        );
+      }
+      if (!showDistrictLabels) continue;
+      final layout = provinceDistricts(i);
+      for (var slot = 0; slot < layout.length; slot++) {
+        final c = interiorPoint(layout[slot]);
+        final t = territories[i * quanPerProvince + slot];
+        final key = t == null ? '' : territoryGroup(t);
+        final px = c.dx * size.width;
+        final py = c.dy * size.height;
+        // Zoom sâu thì mỗi ô tự mang tên tỉnh: tỉnh nào cũng có Quận 1..12
+        // nên "Q1" suông không nói lên ô nào.
+        if (showTileProvince) {
+          paintText(
+            canvas,
+            prov.name.toUpperCase(),
+            Offset(px, py - 12),
+            size: 6,
+            color: Colors.white.withValues(alpha: 0.55),
+            weight: FontWeight.w800,
+            align: TextAlign.center,
+            glow: Colors.black,
+            glowBlur: 3,
+          );
+        }
+        paintText(
+          canvas,
+          showTileProvince ? 'QUẬN ${slot + 1}' : 'Q${slot + 1}',
+          Offset(px, py - 3),
+          size: showTileProvince ? 7.5 : 7,
+          color: key.isEmpty
+              ? Colors.white.withValues(alpha: 0.6)
+              : gangColor(key, myId: myId, myGangId: myGangId),
+          weight: FontWeight.w900,
+          align: TextAlign.center,
+          glow: Colors.black,
+          glowBlur: 4,
+        );
+      }
+    }
   }
 
   void _sea(Canvas c, Size size, math.Random rnd) {
@@ -489,5 +507,11 @@ class _MapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MapPainter old) =>
-      old.selected != selected || old.showLabels != showLabels;
+      old.territories != territories ||
+      old.selected != selected ||
+      old.showProvinceLabels != showProvinceLabels ||
+      old.showDistrictLabels != showDistrictLabels ||
+      old.showTileProvince != showTileProvince ||
+      old.myId != myId ||
+      old.myGangId != myGangId;
 }

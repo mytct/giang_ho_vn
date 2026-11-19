@@ -422,6 +422,10 @@ type Territory struct {
 
 func (t *Territory) Contested(now time.Time) bool { return t.ContestedAt > now.Unix() }
 
+// Label là tên hiển thị kèm tỉnh: tỉnh nào cũng có Quận 1..12 nên gọi trần
+// "Quận 1" thì người chơi không phân biệt được ô nào.
+func (t *Territory) Label() string { return t.Province + " · " + t.Name }
+
 // npcOwnerFor: rải vài quận cho băng NPC để có đất mà đánh.
 func npcOwnerFor(province, slot int) string {
 	switch (province*3 + slot) % 9 {
