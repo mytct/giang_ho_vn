@@ -52,6 +52,8 @@ class _HomeScreenState extends State<HomeScreen> {
           return const Center(child: CircularProgressIndicator(color: GH.pink));
         }
         _scene.setRate(s.rate);
+        final regions = _ownedRegions(s);
+        final region = regions.contains(_region) ? _region : homeRegionIndex;
         return Column(
           children: [
             _PlayerHeader(state: s, controller: c),
@@ -110,14 +112,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   SectionTitle(
                     text: 'Cơ sở làm ăn',
                     trailing: Text(
-                      '${s.businesses.where((b) => b.region == _region && b.unlocked).length}'
-                      '/${s.businesses.where((b) => b.region == _region).length} mở khoá',
+                      '${s.businesses.where((b) => b.region == region && b.unlocked).length}'
+                      '/${s.businesses.where((b) => b.region == region).length} mở khoá',
                       style: labelStyle(size: 10.5),
                     ),
                   ),
-                  _regionChips(s),
+                  _regionChips(s, regions),
                   const SizedBox(height: 6),
-                  for (final b in s.businesses.where((b) => b.region == _region))
+                  for (final b in s.businesses.where((b) => b.region == region))
                     _BusinessTile(
                       business: b,
                       onTap: () {
@@ -423,16 +425,21 @@ class _HomeScreenState extends State<HomeScreen> {
     return n;
   }
 
-  Widget _regionChips(PlayerState s) {
-    final count = vnRegionNames.length;
+  List<int> _ownedRegions(PlayerState s) => [
+        for (var i = 0; i < vnRegionNames.length; i++)
+          if (i == homeRegionIndex || _regionHeld(s, i) > 0) i,
+      ];
+
+  Widget _regionChips(PlayerState s, List<int> regions) {
     return SizedBox(
       height: 32,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: count,
+        itemCount: regions.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (context, i) {
+        itemBuilder: (context, idx) {
+          final i = regions[idx];
           final active = _region == i;
           final held = _regionHeld(s, i);
           final open = held > 0 || i == homeRegionIndex;

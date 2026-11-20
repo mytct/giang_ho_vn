@@ -58,6 +58,8 @@ class GuardSlot {
     required this.tax,
     this.minions = 0,
     this.province = '',
+    this.generalId = '',
+    this.general = '',
   });
 
   final int territoryId;
@@ -66,6 +68,8 @@ class GuardSlot {
   final int tax;
   final int minions;
   final String province;
+  final String generalId;
+  final String general;
 
   String get fullName => province.isEmpty ? name : '$province · $name';
 
@@ -76,6 +80,8 @@ class GuardSlot {
         count: asInt(j['count']),
         tax: asInt(j['tax']),
         minions: asInt(j['minions']),
+        generalId: j['generalId'] as String? ?? '',
+        general: j['general'] as String? ?? '',
       );
 }
 
@@ -203,6 +209,7 @@ class GangInfo {
   const GangInfo({
     required this.id,
     required this.name,
+    required this.flag,
     required this.members,
     required this.maxMembers,
     required this.power,
@@ -230,6 +237,7 @@ class GangInfo {
 
   final String id;
   final String name;
+  final String flag;
   final int members;
   final int maxMembers;
   final int power;
@@ -257,6 +265,7 @@ class GangInfo {
   factory GangInfo.fromJson(Map<String, dynamic> j) => GangInfo(
         id: j['id'] as String? ?? '',
         name: j['name'] as String? ?? '',
+        flag: j['flag'] as String? ?? '',
         members: asInt(j['members']),
         maxMembers: asInt(j['maxMembers']),
         power: asInt(j['power']),
@@ -746,6 +755,7 @@ class PlayerState {
     required this.businesses,
     required this.missions,
     required this.crewSkills,
+    required this.gangFlags,
     required this.level,
     required this.xp,
     required this.xpNext,
@@ -820,6 +830,7 @@ class PlayerState {
   final List<BusinessInfo> businesses;
   final List<Mission> missions;
   final List<CrewSkill> crewSkills;
+  final Map<String, String> gangFlags;
   final int level;
   final int xp;
   final int xpNext;
@@ -914,6 +925,8 @@ class PlayerState {
         crewSkills: (j['crewSkills'] as List? ?? [])
             .map((e) => CrewSkill.fromJson((e as Map).cast<String, dynamic>()))
             .toList(),
+        gangFlags: (j['gangFlags'] as Map? ?? {})
+            .map((k, v) => MapEntry(k as String, v as String)),
         level: j['level'] == null ? 1 : asInt(j['level']),
         xp: asInt(j['xp']),
         xpNext: asInt(j['xpNext']),
@@ -1177,6 +1190,7 @@ class RankingRow {
     required this.owned,
     required this.isMe,
     required this.bounty,
+    required this.gangFlag,
     required this.landIncome,
     required this.prestige,
     required this.prestigeMultiplier,
@@ -1192,6 +1206,7 @@ class RankingRow {
   final int owned;
   final bool isMe;
   final int bounty;
+  final String gangFlag;
   final double landIncome;
   final int prestige;
   final double prestigeMultiplier;
@@ -1207,6 +1222,7 @@ class RankingRow {
         owned: asInt(j['owned']),
         isMe: j['isMe'] as bool? ?? false,
         bounty: asInt(j['bounty']),
+        gangFlag: j['gangFlag'] as String? ?? '',
         landIncome: asDouble(j['landIncome']),
         prestige: asInt(j['prestige']),
         prestigeMultiplier: asDouble(j['prestigeMultiplier']) == 0

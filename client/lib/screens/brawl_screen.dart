@@ -36,7 +36,7 @@ class BrawlScreen extends StatefulWidget {
 class _BrawlScreenState extends State<BrawlScreen> {
   late final BrawlGame _game;
   bool _done = false;
-  Timer? _autoClose;
+  Timer? _resultTimer;
 
   @override
   void initState() {
@@ -49,11 +49,13 @@ class _BrawlScreenState extends State<BrawlScreen> {
       enemyCount: 3,
       myWeapon: widget.myWeapon,
       onFinished: () {
-        if (!mounted) return;
-        setState(() => _done = true);
-        // Giữ màn kết thúc 5s rồi tự thoát (bấm XONG vẫn thoát sớm hơn).
-        _autoClose = Timer(const Duration(seconds: 5), () {
-          if (mounted) Navigator.of(context).pop();
+        // Chạy cảnh kết thúc 5s rồi hiện bảng kết quả, giữ thêm 5s nữa thì tự thoát.
+        _resultTimer = Timer(const Duration(seconds: 5), () {
+          if (!mounted) return;
+          setState(() => _done = true);
+          _resultTimer = Timer(const Duration(seconds: 5), () {
+            if (mounted) Navigator.of(context).pop();
+          });
         });
       },
     );
@@ -61,7 +63,7 @@ class _BrawlScreenState extends State<BrawlScreen> {
 
   @override
   void dispose() {
-    _autoClose?.cancel();
+    _resultTimer?.cancel();
     super.dispose();
   }
 

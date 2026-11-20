@@ -5,6 +5,7 @@ import '../controller.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/pixel_flag.dart';
 import 'brawl_screen.dart';
 import 'rpg_map.dart';
 
@@ -100,6 +101,12 @@ class _MapScreenState extends State<MapScreen> {
                       territories: c.territories,
                       myId: s?.playerId ?? '',
                       myGangId: s?.gangId ?? '',
+                      guards: s == null
+                          ? const <int, GuardSlot>{}
+                          : {
+                              for (final g in s.guards) g.territoryId: g,
+                            },
+                      gangFlags: s?.gangFlags ?? const <String, String>{},
                       onTapTerritory: _openTerritoryById,
                     ),
             ),
@@ -178,6 +185,15 @@ class _MapScreenState extends State<MapScreen> {
               t.ownerGangId == s.gangId;
           final diff = s.power - t.defense;
           final outmatched = diff < 0;
+          GuardSlot? garrison;
+          if (mine) {
+            for (final g in s.guards) {
+              if (g.territoryId == t.id) {
+                garrison = g;
+                break;
+              }
+            }
+          }
           CityInfo? city;
           for (final ci in s.cities) {
             if (ci.district == t.provinceId) {
@@ -236,6 +252,16 @@ class _MapScreenState extends State<MapScreen> {
                     _row('Cấp địa bàn', '${t.level}/5', GH.cyan),
                     _row('Phòng thủ', '${t.defense}', GH.cyan),
                     _row('Lực của mày', '${s.power}', GH.pink),
+                    if (garrison != null &&
+                        (garrison.count > 0 ||
+                            garrison.minions > 0 ||
+                            garrison.general.isNotEmpty))
+                      _row(
+                        'Đang giữ',
+                        '${garrison.count} đàn em · ${garrison.minions} lính'
+                        '${garrison.general.isEmpty ? '' : ' · ★ ${garrison.general}'}',
+                        GH.cyan,
+                      ),
                     if (t.contested)
                       Padding(
                         padding: const EdgeInsets.only(top: 6),
@@ -498,6 +524,11 @@ class _MapScreenState extends State<MapScreen> {
       );
       if (!mounted) return;
       await widget.controller.reloadTerritoriesQuietly();
+      // Chiếm được ô thì nhắc chia quân: ô mới chưa có ai trấn giữ.
+      if (!mounted) return;
+      if (result.win) {
+        showToast(context, 'Ô mới chưa có quân giữ — CHIA TỰ ĐỘNG ở tab Quân');
+      }
     } on ApiException catch (e) {
       if (mounted) showToast(context, e.message, error: true);
     }

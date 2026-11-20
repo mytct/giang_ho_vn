@@ -51,10 +51,12 @@ type Player struct {
 	Bounty        int64
 	Guards        map[int]int
 	MinionGuards  map[int]int
-	Minions       int
-	Wounds        int
-	Gear          map[string]int
-	Goods         float64
+	// GenGuards[territoryID] = generalID: tướng trấn giữ, +20 phòng thủ (+5/cấp).
+	GenGuards map[int]string
+	Minions   int
+	Wounds    int
+	Gear      map[string]int
+	Goods     float64
 	// Works[quận][công trình] = cấp; chỉ có tác dụng khi giữ trọn quận.
 	Works         map[int]map[string]int
 	WoundAt       time.Time
@@ -99,6 +101,7 @@ type GangLog struct {
 type Gang struct {
 	ID                  string
 	Name                string
+	Flag                string
 	LeaderID            string
 	Members             []string
 	Officers            []string
@@ -186,6 +189,8 @@ type GuardSlot struct {
 	Province    string `json:"province"`
 	Count       int    `json:"count"`
 	Minions     int    `json:"minions"`
+	GeneralID   string `json:"generalId"`
+	General     string `json:"general"`
 	Tax         int64  `json:"tax"`
 }
 
@@ -412,91 +417,93 @@ type RankView struct {
 }
 
 type StateView struct {
-	Name              string           `json:"name"`
-	Money             int64            `json:"money"`
-	Uy                int64            `json:"uy"`
-	Rank              RankView         `json:"rank"`
-	NextRank          *RankView        `json:"nextRank"`
-	Rate              float64          `json:"rate"`
-	Power             int              `json:"power"`
-	Weapon            Weapon           `json:"weapon"`
-	NextWeapon        *Weapon          `json:"nextWeapon"`
-	RosterCost        int64            `json:"rosterCost"`
-	Crew              int              `json:"crew"`
-	CrewCost          int64            `json:"crewCost"`
-	OwnedCount        int              `json:"ownedCount"`
-	TerritoryMul      float64          `json:"territoryMul"`
-	Level             int              `json:"level"`
-	XP                int64            `json:"xp"`
-	XPNext            int64            `json:"xpNext"`
-	Points            int              `json:"points"`
-	Stats             map[string]int   `json:"stats"`
-	GangID            string           `json:"gangId"`
-	GangName          string           `json:"gangName"`
-	GangMembers       int              `json:"gangMembers"`
-	GangBonus         float64          `json:"gangBonus"`
-	ShieldUntil       int64            `json:"shieldUntil"`
-	MaxOwned          int              `json:"maxOwned"`
-	Daily             []MissionView    `json:"daily"`
-	DailyResetAt      int64            `json:"dailyResetAt"`
-	Unread            int              `json:"unread"`
-	Contract          *ContractView    `json:"contract"`
-	CasinoLeft        int              `json:"casinoLeft"`
-	SeasonKey         string           `json:"seasonKey"`
-	SeasonUy          int64            `json:"seasonUy"`
-	Items             []string         `json:"items"`
-	PlayerID          string           `json:"playerId"`
-	Heat              int              `json:"heat"`
-	HeatPenalty       float64          `json:"heatPenalty"`
-	BribeCost         int64            `json:"bribeCost"`
-	Formation         string           `json:"formation"`
-	Guards            []GuardSlot      `json:"guards"`
-	GuardsTotal       int              `json:"guardsTotal"`
-	AvailableCrew     int              `json:"availableCrew"`
-	GuardedMinions    int              `json:"guardedMinions"`
-	AvailableMinions  int              `json:"availableMinions"`
-	Minions           int              `json:"minions"`
-	MinionHealthy     int              `json:"minionHealthy"`
-	Wounds            int              `json:"wounds"`
-	MinionPower       int              `json:"minionPower"`
-	MinionRecruitCost int64            `json:"minionRecruitCost"`
-	MinionHealCost    int64            `json:"minionHealCost"`
-	MaxMinions        int              `json:"maxMinions"`
-	MinionGear        []MinionGearView `json:"minionGear"`
-	Upkeep            float64          `json:"upkeep"`
-	Goods             float64          `json:"goods"`
-	GoodsRate         float64          `json:"goodsRate"`
-	GoodsUpkeep       float64          `json:"goodsUpkeep"`
-	DistrictHeld      int              `json:"districtHeld"`
-	DistrictBonus     float64          `json:"districtBonus"`
-	Cities            []CityView       `json:"cities"`
-	Works             []WorkView       `json:"works"`
-	Generals          []GeneralView    `json:"generals"`
-	GeneralCost       int64            `json:"generalCost"`
-	GeneralPower      int              `json:"generalPower"`
-	Bounty            int64            `json:"bounty"`
-	LandIncome        float64          `json:"landIncome"`
-	Prestige          int              `json:"prestige"`
-	PrestigeMul       float64          `json:"prestigeMultiplier"`
-	CanPrestige       bool             `json:"canPrestige"`
-	Chapter           int              `json:"chapter"`
-	Weapons           []Weapon         `json:"weapons"`
-	Businesses        []BusinessView   `json:"businesses"`
-	Missions          []MissionView    `json:"missions"`
-	CrewSkills        []CrewSkillView  `json:"crewSkills"`
+	Name              string            `json:"name"`
+	Money             int64             `json:"money"`
+	Uy                int64             `json:"uy"`
+	Rank              RankView          `json:"rank"`
+	NextRank          *RankView         `json:"nextRank"`
+	Rate              float64           `json:"rate"`
+	Power             int               `json:"power"`
+	Weapon            Weapon            `json:"weapon"`
+	NextWeapon        *Weapon           `json:"nextWeapon"`
+	RosterCost        int64             `json:"rosterCost"`
+	Crew              int               `json:"crew"`
+	CrewCost          int64             `json:"crewCost"`
+	OwnedCount        int               `json:"ownedCount"`
+	TerritoryMul      float64           `json:"territoryMul"`
+	Level             int               `json:"level"`
+	XP                int64             `json:"xp"`
+	XPNext            int64             `json:"xpNext"`
+	Points            int               `json:"points"`
+	Stats             map[string]int    `json:"stats"`
+	GangID            string            `json:"gangId"`
+	GangName          string            `json:"gangName"`
+	GangMembers       int               `json:"gangMembers"`
+	GangBonus         float64           `json:"gangBonus"`
+	ShieldUntil       int64             `json:"shieldUntil"`
+	MaxOwned          int               `json:"maxOwned"`
+	Daily             []MissionView     `json:"daily"`
+	DailyResetAt      int64             `json:"dailyResetAt"`
+	Unread            int               `json:"unread"`
+	Contract          *ContractView     `json:"contract"`
+	CasinoLeft        int               `json:"casinoLeft"`
+	SeasonKey         string            `json:"seasonKey"`
+	SeasonUy          int64             `json:"seasonUy"`
+	Items             []string          `json:"items"`
+	PlayerID          string            `json:"playerId"`
+	Heat              int               `json:"heat"`
+	HeatPenalty       float64           `json:"heatPenalty"`
+	BribeCost         int64             `json:"bribeCost"`
+	Formation         string            `json:"formation"`
+	Guards            []GuardSlot       `json:"guards"`
+	GuardsTotal       int               `json:"guardsTotal"`
+	AvailableCrew     int               `json:"availableCrew"`
+	GuardedMinions    int               `json:"guardedMinions"`
+	AvailableMinions  int               `json:"availableMinions"`
+	Minions           int               `json:"minions"`
+	MinionHealthy     int               `json:"minionHealthy"`
+	Wounds            int               `json:"wounds"`
+	MinionPower       int               `json:"minionPower"`
+	MinionRecruitCost int64             `json:"minionRecruitCost"`
+	MinionHealCost    int64             `json:"minionHealCost"`
+	MaxMinions        int               `json:"maxMinions"`
+	MinionGear        []MinionGearView  `json:"minionGear"`
+	Upkeep            float64           `json:"upkeep"`
+	Goods             float64           `json:"goods"`
+	GoodsRate         float64           `json:"goodsRate"`
+	GoodsUpkeep       float64           `json:"goodsUpkeep"`
+	DistrictHeld      int               `json:"districtHeld"`
+	DistrictBonus     float64           `json:"districtBonus"`
+	Cities            []CityView        `json:"cities"`
+	Works             []WorkView        `json:"works"`
+	Generals          []GeneralView     `json:"generals"`
+	GeneralCost       int64             `json:"generalCost"`
+	GeneralPower      int               `json:"generalPower"`
+	Bounty            int64             `json:"bounty"`
+	LandIncome        float64           `json:"landIncome"`
+	Prestige          int               `json:"prestige"`
+	PrestigeMul       float64           `json:"prestigeMultiplier"`
+	CanPrestige       bool              `json:"canPrestige"`
+	Chapter           int               `json:"chapter"`
+	Weapons           []Weapon          `json:"weapons"`
+	Businesses        []BusinessView    `json:"businesses"`
+	Missions          []MissionView     `json:"missions"`
+	CrewSkills        []CrewSkillView   `json:"crewSkills"`
+	GangFlags         map[string]string `json:"gangFlags"`
 }
 
 type RankRow struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Rank   string `json:"rank"`
-	Uy     int64  `json:"uy"`
-	Power  int    `json:"power"`
-	Owned  int    `json:"owned"`
-	IsMe   bool   `json:"isMe"`
-	Bounty int64  `json:"bounty"`
-	Money  int64  `json:"-"`
-	Player string `json:"-"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Rank     string `json:"rank"`
+	Uy       int64  `json:"uy"`
+	Power    int    `json:"power"`
+	Owned    int    `json:"owned"`
+	IsMe     bool   `json:"isMe"`
+	Bounty   int64  `json:"bounty"`
+	GangFlag string `json:"gangFlag"`
+	Money    int64  `json:"-"`
+	Player   string `json:"-"`
 }
 
 type BrawlEvent struct {
@@ -636,6 +643,7 @@ func (s *Store) Login(name string) (*Player, string, error) {
 		Items:         map[string]bool{},
 		Guards:        map[int]int{},
 		MinionGuards:  map[int]int{},
+		GenGuards:     map[int]string{},
 		Gear:          map[string]int{},
 		Works:         map[int]map[string]int{},
 		Racket:        map[string]int{},
@@ -1172,7 +1180,7 @@ func (s *Store) stateLocked(p *Player) StateView {
 			biz = append(biz, businessView(p, def, r))
 		}
 	}
-	return StateView{
+	view := StateView{
 		Name:              p.Name,
 		Money:             p.Money,
 		Uy:                p.Uy,
@@ -1246,6 +1254,19 @@ func (s *Store) stateLocked(p *Player) StateView {
 		Missions:          missionViews(p),
 		CrewSkills:        crewSkillViews(p),
 	}
+	view.GangFlags = s.gangFlagsLocked()
+	return view
+}
+
+// gangFlagsLocked: cờ custom của các băng (chỉ băng có cờ mới nằm trong map).
+func (s *Store) gangFlagsLocked() map[string]string {
+	out := make(map[string]string, len(s.gangs))
+	for id, g := range s.gangs {
+		if g.Flag != "" {
+			out[id] = g.Flag
+		}
+	}
+	return out
 }
 
 func (s *Store) State(tok string) (StateView, error) {
@@ -1489,6 +1510,13 @@ func (s *Store) defenseOf(t *Territory) int {
 				def = p
 			}
 			def += owner.Guards[t.ID]*10 + owner.MinionGuards[t.ID]/2 + t.Level*8
+			// Tướng trấn giữ: +20 phòng thủ, mỗi cấp tướng +5.
+			for _, g := range owner.Generals {
+				if g.ID != "" && owner.GenGuards[t.ID] == g.ID {
+					def += 20 + g.Level*5
+					break
+				}
+			}
 			d := DistrictOf(t.ID)
 			if owner.CityHeld(d) {
 				def += 12 + 5*owner.WorkLevel(d, "trai")
@@ -1678,6 +1706,7 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 			delete(defender.Owned, id)
 			delete(defender.Guards, id)
 			delete(defender.MinionGuards, id)
+			delete(defender.GenGuards, id)
 			s.recalcLandLocked(defender)
 			if dh := defender.MinionHealthy(); dh > 0 {
 				w := dh / 12
@@ -1748,6 +1777,12 @@ func (s *Store) Attack(tok string, id int) (BrawlResult, StateView, error) {
 			i := mrand.Intn(len(p.Generals))
 			dead := p.Generals[i]
 			p.Generals = append(p.Generals[:i], p.Generals[i+1:]...)
+			// Tướng chết thì bỏ trấn giữ luôn.
+			for tid, gid := range p.GenGuards {
+				if gid == dead.ID {
+					delete(p.GenGuards, tid)
+				}
+			}
 			p.addInbox(InboxMsg{
 				ID: token(), Kind: "general", At: time.Now().Unix(),
 				Text: fmt.Sprintf("%s bỏ xác ngoài hẻm, mất một tướng", dead.Name),
@@ -1870,6 +1905,7 @@ type RelationEdge struct {
 type GangView struct {
 	ID                  string `json:"id"`
 	Name                string `json:"name"`
+	Flag                string `json:"flag"`
 	Members             int    `json:"members"`
 	MaxMembers          int    `json:"maxMembers"`
 	Power               int    `json:"power"`
@@ -1946,7 +1982,7 @@ func (s *Store) gangViewLocked(g *Gang, me *Player) GangView {
 		}
 	}
 	return GangView{
-		ID: g.ID, Name: g.Name, Members: len(g.Members),
+		ID: g.ID, Name: g.Name, Flag: g.Flag, Members: len(g.Members),
 		MaxMembers: gangMaxMembers, Power: power, Owned: owned,
 		Leader: leaderName, IsMine: me != nil && me.GangID == g.ID,
 		WarName: warName, WarUntil: warUntil.Unix(),
@@ -2381,9 +2417,13 @@ func (s *Store) Ranking(tok string) []RankRow {
 	rows := make([]RankRow, 0, len(s.players))
 	for _, p := range s.players {
 		s.accrue(p, time.Now())
+		gangFlag := ""
+		if g := s.gangs[p.GangID]; g != nil {
+			gangFlag = g.Flag
+		}
 		rows = append(rows, RankRow{
 			ID: p.ID, Bounty: p.Bounty, Name: p.Name, Rank: RankFor(p.Uy).Name, Uy: p.Uy,
-			Power: p.Power(), Owned: p.OwnedCount(),
+			Power: p.Power(), Owned: p.OwnedCount(), GangFlag: gangFlag,
 			IsMe: me != nil && p.ID == me.ID, Money: p.Money, Player: p.ID,
 		})
 	}
@@ -2554,7 +2594,8 @@ func (s *Store) Inbox(tok string) ([]InboxMsg, int, error) {
 	return out, unreadCount(p), nil
 }
 
-func (s *Store) ReadInbox(tok string) (StateView, error) {
+// ReadInbox đánh dấu đã đọc: có id thì đọc 1 tin, rỗng thì đọc hết.
+func (s *Store) ReadInbox(tok, id string) (StateView, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, err := s.player(tok)
@@ -2563,7 +2604,9 @@ func (s *Store) ReadInbox(tok string) (StateView, error) {
 	}
 	s.accrue(p, time.Now())
 	for i := range p.Inbox {
-		p.Inbox[i].Read = true
+		if id == "" || p.Inbox[i].ID == id {
+			p.Inbox[i].Read = true
+		}
 	}
 	return s.stateLocked(p), nil
 }
@@ -2988,6 +3031,7 @@ func (s *Store) tickNPCsLocked(now time.Time) {
 			delete(owner.Owned, r.TerritoryID)
 			delete(owner.Guards, r.TerritoryID)
 			delete(owner.MinionGuards, r.TerritoryID)
+			delete(owner.GenGuards, r.TerritoryID)
 			s.recalcLandLocked(owner)
 			owner.addInbox(InboxMsg{
 				ID: token(), Kind: "npc", At: now.Unix(), TerritoryID: r.TerritoryID,
@@ -3217,15 +3261,25 @@ func (s *Store) guardSlotsLocked(p *Player) []GuardSlot {
 		if !p.Owned[i] {
 			continue
 		}
-		out = append(out, GuardSlot{
+		slot := GuardSlot{
 			TerritoryID: i, Name: t.Name, Province: t.Province,
 			Count: p.Guards[i], Minions: p.MinionGuards[i], Tax: t.Tax,
-		})
+		}
+		if genID := p.GenGuards[i]; genID != "" {
+			for _, g := range p.Generals {
+				if g.ID == genID {
+					slot.GeneralID = g.ID
+					slot.General = g.Name
+					break
+				}
+			}
+		}
+		out = append(out, slot)
 	}
 	return out
 }
 
-func (s *Store) AssignGuard(tok string, territoryID, crew, minions int) (StateView, error) {
+func (s *Store) AssignGuard(tok string, territoryID, crew, minions int, generalID string) (StateView, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	p, err := s.player(tok)
@@ -3247,8 +3301,161 @@ func (s *Store) AssignGuard(tok string, territoryID, crew, minions int) (StateVi
 	if otherMinions+minions > p.MinionHealthy() {
 		return StateView{}, errors.New("không đủ lính khỏe để chia")
 	}
+	if generalID != "" {
+		known := false
+		for _, g := range p.Generals {
+			if g.ID == generalID {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return StateView{}, errors.New("không có tướng này")
+		}
+		// Một tướng chỉ trấn giữ một ô: dời khỏi ô cũ nếu có.
+		for tid, gid := range p.GenGuards {
+			if gid == generalID && tid != territoryID {
+				delete(p.GenGuards, tid)
+			}
+		}
+		p.GenGuards[territoryID] = generalID
+	} else {
+		delete(p.GenGuards, territoryID)
+	}
 	p.Guards[territoryID] = crew
 	p.MinionGuards[territoryID] = minions
+	return s.stateLocked(p), nil
+}
+
+// AutoAssignGuards chia nửa quân giữ đất cho các tỉnh đang giữ: mỗi tỉnh
+// một phần bằng nhau, trong tỉnh chia theo thuế (ô thuế cao nhận phần lẻ
+// trước); nửa còn lại tự do đi chém.
+func (s *Store) AutoAssignGuards(tok string) (StateView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return StateView{}, err
+	}
+	s.accrue(p, time.Now())
+	byProv := map[int][]int{}
+	for id := range p.Owned {
+		if id < 0 || id >= len(s.territories) {
+			continue
+		}
+		pi := DistrictOf(id)
+		byProv[pi] = append(byProv[pi], id)
+	}
+	if len(byProv) == 0 {
+		return StateView{}, errors.New("chưa có địa bàn nào để chia")
+	}
+	maxTax := func(ids []int) int64 {
+		var m int64
+		for _, id := range ids {
+			if t := s.territories[id]; t.Tax > m {
+				m = t.Tax
+			}
+		}
+		return m
+	}
+	provs := make([]int, 0, len(byProv))
+	for pi := range byProv {
+		provs = append(provs, pi)
+	}
+	// Tỉnh có ô thuế cao nhất nhận phần lẻ trước.
+	sort.Slice(provs, func(a, b int) bool {
+		return maxTax(byProv[provs[a]]) > maxTax(byProv[provs[b]])
+	})
+	p.Guards = map[int]int{}
+	p.MinionGuards = map[int]int{}
+	crew := p.Crew / 2
+	minions := p.MinionHealthy() / 2
+	nProv := len(provs)
+	for i, pi := range provs {
+		tiles := byProv[pi]
+		sort.Slice(tiles, func(a, b int) bool {
+			return s.territories[tiles[a]].Tax > s.territories[tiles[b]].Tax
+		})
+		qc := crew / nProv
+		if i < crew%nProv {
+			qc++
+		}
+		qm := minions / nProv
+		if i < minions%nProv {
+			qm++
+		}
+		for k, id := range tiles {
+			c := qc / len(tiles)
+			if k < qc%len(tiles) {
+				c++
+			}
+			m := qm / len(tiles)
+			if k < qm%len(tiles) {
+				m++
+			}
+			if c > 0 {
+				p.Guards[id] = c
+			}
+			if m > 0 {
+				p.MinionGuards[id] = m
+			}
+		}
+	}
+	// Tướng trấn giữ: mỗi tướng một ô, ưu tiên ô thuế cao toàn lãnh thổ.
+	allTiles := make([]int, 0, len(p.Owned))
+	for pi := range byProv {
+		allTiles = append(allTiles, byProv[pi]...)
+	}
+	sort.Slice(allTiles, func(a, b int) bool {
+		return s.territories[a].Tax > s.territories[b].Tax
+	})
+	for gi, gen := range p.Generals {
+		if gi >= len(allTiles) {
+			break
+		}
+		p.GenGuards[allTiles[gi]] = gen.ID
+	}
+	return s.stateLocked(p), nil
+}
+
+// validFlagString kiểm tra chuỗi cờ 8x8: 64 ký tự 0/1/2.
+func validFlagString(flag string) bool {
+	if len(flag) != 64 {
+		return false
+	}
+	for _, c := range flag {
+		if c != '0' && c != '1' && c != '2' {
+			return false
+		}
+	}
+	return true
+}
+
+// SetGangFlag lưu cờ pixel tự vẽ của băng (chỉ băng trưởng/phó). Chuỗi rỗng
+// trả cờ về chế độ sinh tự động.
+func (s *Store) SetGangFlag(tok, flag string) (StateView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.player(tok)
+	if err != nil {
+		return StateView{}, err
+	}
+	if p.GangID == "" {
+		return StateView{}, errors.New("chưa vào băng nào")
+	}
+	g := s.gangs[p.GangID]
+	if g == nil {
+		return StateView{}, errors.New("băng không tồn tại")
+	}
+	if r := gangRole(g, p.ID); r != "leader" && r != "officer" {
+		return StateView{}, errors.New("chỉ băng trưởng hoặc phó mới được sửa cờ")
+	}
+	flag = strings.TrimSpace(flag)
+	if flag != "" && !validFlagString(flag) {
+		return StateView{}, errors.New("cờ không hợp lệ: cần 64 ký tự 0/1/2")
+	}
+	g.Flag = flag
+	g.logLocked(fmt.Sprintf("%s đã đổi cờ băng", p.Name))
 	return s.stateLocked(p), nil
 }
 

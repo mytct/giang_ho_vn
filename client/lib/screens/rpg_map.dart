@@ -5,46 +5,17 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../scene/paint_utils.dart';
 import '../theme.dart';
+import '../widgets/pixel_flag.dart';
 import 'quan_geo.dart';
 import 'vn_map_data.dart';
 
 const double _mapW = 900;
 const double _mapH = 1600;
 
-const Map<String, Color> _npcGangColors = {
-  'npc:ran': Color(0xFF3EE08F),
-  'npc:ca': Color(0xFF00E5D0),
-  'npc:o': Color(0xFF9B6BFF),
-  'npc:chuot': Color(0xFFB58A5A),
-};
-
-const List<Color> _gangPalette = [
-  Color(0xFFFF2E63),
-  Color(0xFF00E5D0),
-  Color(0xFF3EE08F),
-  Color(0xFFFFC93C),
-  Color(0xFF9B6BFF),
-  Color(0xFFFF7A00),
-  Color(0xFF4DA3FF),
-];
-
 /// Khoá nhóm chủ sở hữu dùng để tô màu: cùng băng (hoặc cùng tay chơi khi
 /// chưa có băng) thì cùng màu.
 String territoryGroup(Territory t) =>
     t.ownerGangId.isNotEmpty ? t.ownerGangId : t.ownerId;
-
-Color gangColor(String key, {String myId = '', String myGangId = ''}) {
-  if (key.isEmpty) return GH.muted;
-  if (myGangId.isNotEmpty && key == myGangId) return GH.pink;
-  if (myId.isNotEmpty && key == 'p:$myId') return GH.pink;
-  final npc = _npcGangColors[key];
-  if (npc != null) return npc;
-  var h = 0;
-  for (final c in key.codeUnits) {
-    h = (h * 31 + c) & 0x7fffffff;
-  }
-  return _gangPalette[h % _gangPalette.length];
-}
 
 final Map<int, List<List<Offset>>> _layoutCache = {};
 
@@ -76,12 +47,20 @@ class RpgMapView extends StatefulWidget {
     required this.myId,
     required this.myGangId,
     required this.onTapTerritory,
+    this.guards = const {},
+    this.gangFlags = const {},
   });
 
   final List<Territory> territories;
   final String myId;
   final String myGangId;
   final ValueChanged<int> onTapTerritory;
+
+  /// Quân đang giữ từng ô: territoryId -> GuardSlot, để vẽ huy hiệu.
+  final Map<int, GuardSlot> guards;
+
+  /// Cờ tự vẽ của các băng: gangId -> chuỗi 64 ký tự.
+  final Map<String, String> gangFlags;
 
   @override
   State<RpgMapView> createState() => _RpgMapViewState();
@@ -208,6 +187,8 @@ class _RpgMapViewState extends State<RpgMapView> {
                         showProvinceLabels: _scale > 0.62 && _scale <= 2.2,
                         showDistrictLabels: _scale > 1.25,
                         showTileProvince: _scale > 2.2,
+                        guards: widget.guards,
+                        gangFlags: widget.gangFlags,
                       ),
                     ),
                   ),
@@ -277,6 +258,8 @@ class _MapPainter extends CustomPainter {
     required this.showProvinceLabels,
     required this.showDistrictLabels,
     required this.showTileProvince,
+    required this.guards,
+    required this.gangFlags,
   });
 
   final Map<int, Territory> territories;
@@ -286,6 +269,8 @@ class _MapPainter extends CustomPainter {
   final bool showProvinceLabels;
   final bool showDistrictLabels;
   final bool showTileProvince;
+  final Map<int, GuardSlot> guards;
+  final Map<String, String> gangFlags;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -329,6 +314,9 @@ class _MapPainter extends CustomPainter {
         final color = gangColor(key, myId: myId, myGangId: myGangId);
         final path = _ringPath(layout[slot], size);
         final isSelected = selected == i * quanPerProvince + slot;
+        final mine = t != null &&
+            myId.isNotEmpty &&
+            t.ownerId == 'p:$myId';
 
         if (isSelected) {
           canvas.drawPath(
@@ -354,6 +342,16 @@ class _MapPainter extends CustomPainter {
                 ? GH.gold
                 : GH.ink.withValues(alpha: owned ? 0.9 : 0.65),
         );
+        // Đất của mình luôn có viền trắng để nhồi vào mắt giữa rừng màu băng.
+        if (mine && !isSelected) {
+          canvas.drawPath(
+            path,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.7
+              ..color = Colors.white.withValues(alpha: 0.85),
+          );
+        }
       }
 
       // Đảo/khúc rời của tỉnh: tô theo quận gần nhất để vẫn đúng màu băng.
@@ -414,13 +412,66 @@ class _MapPainter extends CustomPainter {
     }
   }
 
+  String _shortName(String name) {
+    final words = name.split(' ');
+    if (words.length < 2 || name.length <= 8) return name.toUpperCase();
+    if (words.length > 2) return words.map((w) => w[0]).join().toUpperCase();
+    return '${words.first[0]}. ${words.last}'.toUpperCase();
+  }
+
+  /// Nhóm (băng/tay chơi) giữ nhiều quận nhất trong một tỉnh, hoặc null nếu
+  /// tỉnh còn trống.
+  String? _dominantGroup(int province) {
+    final counts = <String, int>{};
+    for (var slot = 0; slot < quanPerProvince; slot++) {
+      final idx = province * quanPerProvince + slot;
+      if (idx >= territories.length) break;
+      final t = territories[idx];
+      if (t == null) continue;
+      final key = territoryGroup(t);
+      if (key.isEmpty) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    String? best;
+    var bestN = 0;
+    counts.forEach((key, n) {
+      if (n > bestN) {
+        best = key;
+        bestN = n;
+      }
+    });
+    return best;
+  }
+
   void _labels(Canvas canvas, Size size) {
     for (var i = 0; i < vnProvinces.length; i++) {
       final prov = vnProvinces[i];
       if (showProvinceLabels && !showDistrictLabels) {
+        // Cờ của băng đang giữ nhiều quận nhất trong tỉnh này.
+        final dom = _dominantGroup(i);
+        if (dom != null) {
+          final custom = parseFlag(gangFlags[dom]);
+          if (custom != null) {
+            paintFlagGrid(
+              canvas,
+              Offset(prov.cx * size.width - 5, prov.cy * size.height + 8),
+              10,
+              custom,
+              gangColor(dom, myId: myId, myGangId: myGangId),
+            );
+          } else {
+            paintPixelFlag(
+              canvas,
+              Offset(prov.cx * size.width - 5, prov.cy * size.height + 8),
+              10,
+              dom,
+              gangColor(dom, myId: myId, myGangId: myGangId),
+            );
+          }
+        }
         paintText(
           canvas,
-          prov.name.toUpperCase(),
+          _shortName(prov.name),
           Offset(prov.cx * size.width, prov.cy * size.height + 26),
           size: 8,
           color: Colors.white.withValues(alpha: 0.92),
@@ -443,7 +494,7 @@ class _MapPainter extends CustomPainter {
         if (showTileProvince) {
           paintText(
             canvas,
-            prov.name.toUpperCase(),
+            _shortName(prov.name),
             Offset(px, py - 12),
             size: 6,
             color: Colors.white.withValues(alpha: 0.55),
@@ -455,7 +506,7 @@ class _MapPainter extends CustomPainter {
         }
         paintText(
           canvas,
-          showTileProvince ? 'QUẬN ${slot + 1}' : 'Q${slot + 1}',
+          'Q${slot + 1}',
           Offset(px, py - 3),
           size: showTileProvince ? 7.5 : 7,
           color: key.isEmpty
@@ -466,8 +517,46 @@ class _MapPainter extends CustomPainter {
           glow: Colors.black,
           glowBlur: 4,
         );
+        // Huy hiệu quân trấn giữ: xanh = đàn em, vàng = lính, hồng T = tướng.
+        final g = t == null ? null : guards[t.id];
+        if (showTileProvince &&
+            g != null &&
+            (g.count > 0 || g.minions > 0 || g.general.isNotEmpty)) {
+          var bx = px - 15;
+          if (g.count > 0) {
+            _badge(canvas, bx, py + 6, '${g.count}', GH.cyan);
+            bx += 16;
+          }
+          if (g.minions > 0) {
+            _badge(canvas, bx, py + 6, '${g.minions}', GH.gold);
+            bx += 16;
+          }
+          if (g.general.isNotEmpty) {
+            _badge(canvas, bx, py + 6, 'T', GH.pink);
+          }
+        }
       }
     }
+  }
+
+  /// Huy hiệu số quân giữ ô: khung nhỏ, số ở giữa.
+  void _badge(Canvas c, double x, double y, String text, Color color) {
+    paintRoundedRect(
+      c,
+      Rect.fromLTWH(x, y, 14, 9),
+      color.withValues(alpha: 0.18),
+      radius: 3,
+      border: color.withValues(alpha: 0.8),
+    );
+    paintText(
+      c,
+      text,
+      Offset(x + 7, y + 1),
+      size: 6.5,
+      color: color,
+      weight: FontWeight.w900,
+      align: TextAlign.center,
+    );
   }
 
   void _sea(Canvas c, Size size, math.Random rnd) {
@@ -513,5 +602,7 @@ class _MapPainter extends CustomPainter {
       old.showDistrictLabels != showDistrictLabels ||
       old.showTileProvince != showTileProvince ||
       old.myId != myId ||
-      old.myGangId != myGangId;
+      old.myGangId != myGangId ||
+      old.guards != guards ||
+      old.gangFlags != gangFlags;
 }

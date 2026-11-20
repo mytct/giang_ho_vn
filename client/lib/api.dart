@@ -276,11 +276,13 @@ class ApiClient {
     return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
   }
 
-  Future<PlayerState> assignGuard(int territory, int crew, int minions) async {
+  Future<PlayerState> assignGuard(
+      int territory, int crew, int minions, String general) async {
     final data = await _send('POST', '/api/crew/assign', body: {
       'territory': territory,
       'crew': crew,
       'minions': minions,
+      'general': general,
       'token': token,
     });
     return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
@@ -289,6 +291,17 @@ class ApiClient {
   Future<PlayerState> setFormation(String kind) async {
     final data = await _send('POST', '/api/crew/formation',
         body: {'kind': kind, 'token': token});
+    return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
+  }
+
+  Future<PlayerState> gangFlag(String flag) async {
+    final data = await _send('POST', '/api/gang/flag',
+        body: {'flag': flag, 'token': token});
+    return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
+  }
+
+  Future<PlayerState> autoAssignGuards() async {
+    final data = await _send('POST', '/api/crew/auto', body: {'token': token});
     return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
   }
 
@@ -369,8 +382,9 @@ class ApiClient {
     return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
   }
 
-  Future<PlayerState> readInbox() async {
-    final data = await _send('POST', '/api/inbox/read', body: {'token': token});
+  Future<PlayerState> readInbox([String id = '']) async {
+    final data = await _send('POST', '/api/inbox/read',
+        body: {'id': id, 'token': token});
     return PlayerState.fromJson((data['state'] as Map).cast<String, dynamic>());
   }
 

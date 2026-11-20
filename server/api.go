@@ -398,9 +398,37 @@ func registerRoutes(mux *http.ServeMux, st *Store) {
 			Territory int    `json:"territory"`
 			Crew      int    `json:"crew"`
 			Minions   int    `json:"minions"`
+			General   string `json:"general"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		state, err := st.AssignGuard(body.Token, body.Territory, body.Crew, body.Minions)
+		state, err := st.AssignGuard(body.Token, body.Territory, body.Crew, body.Minions, body.General)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"state": state})
+	})
+
+	mux.HandleFunc("POST /api/crew/auto", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token string `json:"token"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state, err := st.AutoAssignGuards(body.Token)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		writeJSON(w, 200, map[string]any{"state": state})
+	})
+
+	mux.HandleFunc("POST /api/gang/flag", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Token string `json:"token"`
+			Flag  string `json:"flag"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		state, err := st.SetGangFlag(body.Token, body.Flag)
 		if err != nil {
 			fail(w, 400, err.Error())
 			return
@@ -586,9 +614,10 @@ func registerRoutes(mux *http.ServeMux, st *Store) {
 	mux.HandleFunc("POST /api/inbox/read", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Token string `json:"token"`
+			ID    string `json:"id"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		state, err := st.ReadInbox(body.Token)
+		state, err := st.ReadInbox(body.Token, body.ID)
 		if err != nil {
 			fail(w, 400, err.Error())
 			return

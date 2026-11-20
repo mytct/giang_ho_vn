@@ -109,6 +109,7 @@ PlayerState sampleState({int crew = 1, String gangId = ''}) =>
           'id': 'karaoke',
           'name': 'Karaoke Phượng Hoàng',
           'icon': 'K',
+          'region': 4,
           'level': 2,
           'rate': 20.0,
           'upgradeCost': 1560,
@@ -120,6 +121,7 @@ PlayerState sampleState({int crew = 1, String gangId = ''}) =>
           'id': 'doxe',
           'name': 'Xưởng Độ Xe',
           'icon': 'X',
+          'region': 4,
           'level': 0,
           'rate': 0.0,
           'upgradeCost': 300,
@@ -195,7 +197,9 @@ void main() {
     );
     await tester.pumpWidget(MaterialApp(home: GameWidget(game: game)));
     await tester.pump(const Duration(milliseconds: 16));
-    await tester.pump(const Duration(seconds: 3));
+    // Flame không tick trong widget test, nên gọi update trực tiếp để chạy
+    // trọn replay (~14s + 2.2s đuôi) rồi mới kiểm tra callback kết thúc.
+    game.update(17);
     expect(tester.takeException(), isNull);
     expect(finished, isTrue);
     await tester.binding.setSurfaceSize(null);
@@ -215,15 +219,30 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('Tý Hẻm'), findsOneWidget);
-    expect(find.text('Karaoke Phượng Hoàng'), findsOneWidget);
-    expect(find.text('Xưởng Độ Xe'), findsOneWidget);
-    expect(find.text('Cần đạt Đại ca'), findsOneWidget);
-    expect(find.text('125.0K'), findsOneWidget);
+    // Phần đầu màn hình: nhiệm vụ, cấp độ, tiền.
     expect(find.text('NHIỆM VỤ'), findsOneWidget);
     expect(find.text('NHẬN 1'), findsOneWidget);
     expect(find.textContaining('1 phần thưởng chờ nhận'), findsOneWidget);
     expect(find.text('Lv 3'), findsOneWidget);
     expect(find.text('+1 điểm'), findsOneWidget);
+    expect(find.text('125.0K'), findsOneWidget);
+
+    // Cơ sở làm ăn nằm dưới nếp gấp — cuộn tới rồi mới assert. Chỉ cuộn
+    // scrollable dọc đầu tiên (cuộn xuống sẽ build thêm chip vùng ngang).
+    final list = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+      find.text('Karaoke Phượng Hoàng'),
+      150,
+      scrollable: list,
+    );
+    expect(find.text('Karaoke Phượng Hoàng'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Xưởng Độ Xe'),
+      150,
+      scrollable: list,
+    );
+    expect(find.text('Xưởng Độ Xe'), findsOneWidget);
+    expect(find.text('Cần đạt Đại ca'), findsOneWidget);
 
     await tester.tap(find.text('Lv 3'));
     await tester.pump(const Duration(milliseconds: 350));

@@ -735,6 +735,10 @@ Future<void> _replayDefense(
         enemyName: replay.attackerName,
       ),
     ));
+    // Xem xong thì coi như đã đọc tin này.
+    try {
+      await c.readInboxMsg(m.id);
+    } on ApiException catch (_) {}
   } on ApiException catch (e) {
     if (ctx.mounted) showToast(ctx, e.message, error: true);
   }
@@ -761,6 +765,10 @@ Future<void> _revenge(
       ),
     ));
     await c.reloadTerritoriesQuietly();
+    // Đã báo thù thì tin coi như đã đọc.
+    try {
+      await c.readInboxMsg(m.id);
+    } on ApiException catch (_) {}
   } on ApiException catch (e) {
     if (nav.mounted) showToast(nav.context, e.message, error: true);
   }

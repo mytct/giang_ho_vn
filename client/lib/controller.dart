@@ -213,13 +213,23 @@ class GameController extends ChangeNotifier {
         chapterIndex = current;
       });
 
-  Future<void> assignGuard(int territory, int crew, int minions) =>
+  Future<void> assignGuard(int territory, int crew, int minions,
+          [String general = '']) =>
       _guard(() async {
-        state = await api.assignGuard(territory, crew, minions);
+        state = await api.assignGuard(territory, crew, minions, general);
+      });
+
+  Future<void> autoAssignGuards() => _guard(() async {
+        state = await api.autoAssignGuards();
       });
 
   Future<void> setFormation(String kind) => _guard(() async {
         state = await api.setFormation(kind);
+      });
+
+  Future<void> setGangFlag(String flag) => _guard(() async {
+        state = await api.gangFlag(flag);
+        gangs = await api.gangs();
       });
 
   Future<void> bribeHeat() => _guard(() async {
@@ -252,6 +262,13 @@ class GameController extends ChangeNotifier {
 
   Future<void> readInbox() => _guard(() async {
         state = await api.readInbox();
+        inbox = await api.inbox();
+      });
+
+  /// Đánh dấu 1 tin đã đọc (sau khi xem lại trận hoặc phản công) rồi nạp lại
+  /// hộp thư để badge/chấm đỏ cập nhật.
+  Future<void> readInboxMsg(String id) => _guard(() async {
+        state = await api.readInbox(id);
         inbox = await api.inbox();
       });
 

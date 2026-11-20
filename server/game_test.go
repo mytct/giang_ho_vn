@@ -499,7 +499,7 @@ func TestAttackInboxAndRevengeWindow(t *testing.T) {
 	if unreadCount(b) == 0 {
 		t.Fatal("phải có tin chưa đọc")
 	}
-	state, err := st.ReadInbox(tokA)
+	state, err := st.ReadInbox(tokA, "")
 	if err != nil || state.Unread != 0 {
 		t.Fatalf("đọc hết tin sai: %+v %v", state.Unread, err)
 	}
@@ -1069,22 +1069,22 @@ func TestGuardsSplitAndFormation(t *testing.T) {
 	st.territories[0].OwnerName = p.Name
 	p.Owned[0] = true
 
-	state, err := st.AssignGuard(tok, 0, 2, 0)
+	state, err := st.AssignGuard(tok, 0, 2, 0, "")
 	if err != nil {
 		t.Fatalf("chia quân: %v", err)
 	}
 	if state.GuardsTotal != 2 || state.AvailableCrew != 2 {
 		t.Fatalf("chia quân sai: %+v", state.Guards)
 	}
-	if _, err := st.AssignGuard(tok, 0, 9, 0); err == nil {
+	if _, err := st.AssignGuard(tok, 0, 9, 0, ""); err == nil {
 		t.Fatal("không được chia quá số quân")
 	}
-	if _, err := st.AssignGuard(tok, 1, 1, 0); err == nil {
+	if _, err := st.AssignGuard(tok, 1, 1, 0, ""); err == nil {
 		t.Fatal("không được giữ ô không phải của mình")
 	}
 
 	before := st.defenseOf(st.territories[0])
-	if _, err := st.AssignGuard(tok, 0, 4, 0); err != nil {
+	if _, err := st.AssignGuard(tok, 0, 4, 0, ""); err != nil {
 		t.Fatal(err)
 	}
 	if st.defenseOf(st.territories[0]) <= before {
@@ -1094,14 +1094,14 @@ func TestGuardsSplitAndFormation(t *testing.T) {
 	// Lính đông cũng chia canh giữ được và không còn đi chém.
 	p.Minions = 100
 	powerBefore := p.MinionPower()
-	state, err = st.AssignGuard(tok, 0, 4, 40)
+	state, err = st.AssignGuard(tok, 0, 4, 40, "")
 	if err != nil || state.GuardedMinions != 40 || state.AvailableMinions != 60 {
 		t.Fatalf("chia lính giữ đất: %v %+v", err, state.GuardedMinions)
 	}
 	if p.MinionPower() >= powerBefore {
 		t.Fatal("lính giữ đất phải bớt lực đi chém")
 	}
-	if _, err := st.AssignGuard(tok, 0, 4, 200); err == nil {
+	if _, err := st.AssignGuard(tok, 0, 4, 200, ""); err == nil {
 		t.Fatal("không được chia quá số lính khỏe")
 	}
 

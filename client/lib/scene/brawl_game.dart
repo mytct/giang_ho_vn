@@ -73,7 +73,7 @@ class BrawlGame extends FlameGame {
   final String myWeapon;
   final VoidCallback onFinished;
 
-  late final ui.Image bg;
+  ui.Image? bg;
   FightFrames? myFrames;
   FightFrames? enemyFrames;
 
@@ -94,7 +94,12 @@ class BrawlGame extends FlameGame {
 
   @override
   Future<void> onLoad() async {
-    bg = await loadSceneImage('bg_brawl');
+    // Stage thêm ngay để trận chạy được cả khi ảnh chưa nạp xong;
+    // nền + sprite nạp xong đâu thì hiện dần đó.
+    add(BrawlStage(this));
+    try {
+      bg = await loadSceneImage('bg_brawl');
+    } catch (_) {}
     final sets = await Future.wait([
       FightFrames.load('p'),
       FightFrames.load('e'),
@@ -104,7 +109,6 @@ class BrawlGame extends FlameGame {
     myFrames = sets[0];
     enemyFrames = sets[1];
     variants.addAll(sets.skip(2).whereType<FightFrames>());
-    add(BrawlStage(this));
   }
 }
 
@@ -301,6 +305,7 @@ class BrawlStage extends PositionComponent {
   final List<_Drop> _blood = [];
   final List<_Splat> _splats = [];
   final List<_Muzzle> _muzzles = [];
+  final Map<int, double> _swingCyc = {};
   static const _bloodColors = [
     Color(0xFFB00018),
     Color(0xFF8A0012),
@@ -463,6 +468,10 @@ class BrawlStage extends PositionComponent {
       arc.age += dt;
     }
     _arcs.removeWhere((arc) => arc.age >= _Arc.life);
+    // Trần vệt chém: mỗi vệt vẽ 3 nét (1 nét có blur) nên càng ít càng khỏe.
+    if (_arcs.length > 24) {
+      _arcs.removeRange(0, _arcs.length - 24);
+    }
 
     final groundY = size.y * 0.78;
     for (final d in _blood) {
@@ -535,6 +544,29 @@ class BrawlStage extends PositionComponent {
         _autoEn = enIdx;
         _fakeSlash(size.x * 0.40, size.y * 0.60,
             toRight: false, mine: false);
+      }
+    }
+
+    // Mỗi lính vung tay tới đỉnh cú chém thì tung tia lửa, vệt chém và máu.
+    // Nhẹ tay: 2 tia + 2 giọt + 40% có vệt chém, tránh nghẽn FPS trên web.
+    if (_koAt < 0 && size.x > 0 && _elapsed > 2000) {
+      for (var i = 1; i < _crowd; i++) {
+        for (final mine in [true, false]) {
+          final key = mine ? i : -i;
+          final mp = _minionPose(i, mine: mine);
+          final prev = _swingCyc[key] ?? 0;
+          if (mp.state == 'atk' && prev < 0.5 && mp.cyc >= 0.5) {
+            final x = size.x * mp.cx + (mine ? 1 : -1) * size.x * 0.03;
+            final y = size.y * mp.cy - size.y * mp.hh * 0.55;
+            _spawnSparks(x, y, GH.gold.withValues(alpha: 0.6), count: 2);
+            _spawnBlood(x, y, mine, count: 2, stain: false);
+            if (_rnd.nextDouble() < 0.4) {
+              _arcs.add(
+                  _Arc(x, y, !mine, Colors.white.withValues(alpha: 0.35)));
+            }
+          }
+          _swingCyc[key] = mp.cyc;
+        }
       }
     }
 
@@ -730,6 +762,10 @@ class BrawlStage extends PositionComponent {
     int count = 10,
     bool stain = true,
   }) {
+    // Trần giọt máu để list không phình và FPS không sập giữa trận.
+    if (_blood.length > 140) {
+      _blood.removeRange(0, _blood.length - 140);
+    }
     for (var i = 0; i < count; i++) {
       _blood.add(
         _Drop(
@@ -755,6 +791,9 @@ class BrawlStage extends PositionComponent {
   }
 
   void _spawnSparks(double x, double y, Color color, {int count = 10}) {
+    if (_sparks.length > 140) {
+      _sparks.removeRange(0, _sparks.length - 140);
+    }
     for (var i = 0; i < count; i++) {
       final off = i - (count - 1) / 2;
       _sparks.add(
@@ -1376,17 +1415,24 @@ class BrawlStage extends PositionComponent {
 
   void _background(Canvas c, double w, double h) {
     final img = game.bg;
-    final iw = img.width.toDouble();
-    final ih = img.height.toDouble();
-    final scale = math.max(w / iw, h / ih);
-    final dw = iw * scale;
-    final dh = ih * scale;
-    c.drawImageRect(
-      img,
-      Rect.fromLTWH(0, 0, iw, ih),
-      Rect.fromLTWH((w - dw) / 2, h - dh, dw, dh),
-      Paint()..filterQuality = FilterQuality.medium,
-    );
+    if (img != null) {
+      final iw = img.width.toDouble();
+      final ih = img.height.toDouble();
+      final scale = math.max(w / iw, h / ih);
+      final dw = iw * scale;
+      final dh = ih * scale;
+      c.drawImageRect(
+        img,
+        Rect.fromLTWH(0, 0, iw, ih),
+        Rect.fromLTWH((w - dw) / 2, h - dh, dw, dh),
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+    } else {
+      c.drawRect(
+        Rect.fromLTWH(0, 0, w, h),
+        Paint()..color = const Color(0xFF0B0D13),
+      );
+    }
 
     // Làm tối trên/dưới để thanh máu và chân võ sĩ vẫn tách khỏi nền.
     c.drawRect(

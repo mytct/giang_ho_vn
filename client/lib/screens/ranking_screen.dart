@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../controller.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../widgets/pixel_flag.dart';
+import '../widgets/flag_editor_sheet.dart';
 import '../widgets/common.dart';
 import '../api.dart';
 import 'diplomacy_sheet.dart';
@@ -225,6 +227,8 @@ class _RankRow extends StatelessWidget {
               ),
             ),
           ),
+          PixelFlag(gangKey: row.id, flag: row.gangFlag, size: 16),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -600,8 +604,11 @@ class _GangSection extends StatelessWidget {
                     border:
                         Border.all(color: GH.cyan.withValues(alpha: 0.35)),
                   ),
-                  child:
-                      const Icon(Icons.shield_rounded, color: GH.cyan, size: 20),
+                  child: PixelFlag(
+                    gangKey: s.gangId,
+                    flag: mine?.flag,
+                    size: 26,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -644,8 +651,7 @@ class _GangSection extends StatelessWidget {
                               ),
                             ),
                             GestureDetector(
-                              onTap: () =>
-                                  showGangChatSheet(context, controller),
+                              onTap: () => showGangChatSheet(context, controller),
                               child: Container(
                                 margin: const EdgeInsets.only(right: 6),
                                 padding: const EdgeInsets.symmetric(
@@ -657,6 +663,22 @@ class _GangSection extends StatelessWidget {
                                 child: Text('CHAT',
                                     style: labelStyle(
                                         size: 8, color: GH.cyan)),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () => showFlagEditorSheet(
+                                  context, controller, s.gangId, mine.flag),
+                              child: Container(
+                                margin: const EdgeInsets.only(right: 6),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: GH.pink.withValues(alpha: 0.14),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text('CỜ',
+                                    style: labelStyle(
+                                        size: 8, color: GH.pink)),
                               ),
                             ),
                             GestureDetector(

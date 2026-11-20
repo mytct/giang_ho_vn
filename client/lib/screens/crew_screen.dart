@@ -183,51 +183,7 @@ class CrewScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  NeonPanel(
-                    borderColor: GH.cyan.withValues(alpha: 0.35),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text('CHIA QUÂN GIỮ ĐẤT',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: labelStyle(
-                                      size: 10.5, color: GH.text)),
-                            ),
-                          ],
-                        ),
-                        Text(
-                          '${s.guardsTotal}/${s.crew} đàn em · '
-                          '${s.guardedMinions}/${s.minionHealthy} lính',
-                          style: labelStyle(size: 9.5),
-                        ),
-                        const SizedBox(height: 6),
-                        if (s.guards.isEmpty)
-                          Text(
-                            'Chưa có địa bàn nào. Chiếm ô trước rồi chia quân.',
-                            style: labelStyle(size: 10),
-                          )
-                        else
-                          for (final slot in s.guards)
-                            _GuardRow(
-                              slot: slot,
-                              canAddCrew: s.guardsTotal < s.crew,
-                              canAddMinions:
-                                  s.guardedMinions < s.minionHealthy,
-                              busy: controller.busy,
-                              onChanged: (crew, minions) => _assignGuard(
-                                  context,
-                                  controller,
-                                  slot.territoryId,
-                                  crew,
-                                  minions),
-                            ),
-                      ],
-                    ),
-                  ),
+                  _GuardPanel(controller: controller, state: s),
                   const SizedBox(height: 10),
                   NeonPanel(
                     borderColor: GH.gold.withValues(alpha: 0.4),
@@ -811,6 +767,22 @@ Future<void> _setFormation(
 ) async {
   try {
     await c.setFormation(kind);
+    // Đổi đội hình luôn chia lại quân giữ đất: nửa giữ nhà, nửa đi chém.
+    if ((c.state?.ownedCount ?? 0) > 0) await c.autoAssignGuards();
+    if (context.mounted) {
+      showToast(context, 'Đã đổi đội hình và chia quân giữ đất');
+    }
+  } on ApiException catch (e) {
+    if (context.mounted) showToast(context, e.message, error: true);
+  }
+}
+
+Future<void> _autoAssign(BuildContext context, GameController c) async {
+  try {
+    await c.autoAssignGuards();
+    if (context.mounted) {
+      showToast(context, 'Đã chia nửa quân giữ đất, nửa còn lại đi chém');
+    }
   } on ApiException catch (e) {
     if (context.mounted) showToast(context, e.message, error: true);
   }
@@ -821,10 +793,19 @@ Future<void> _assignGuard(
   GameController c,
   int territoryId,
   int crew,
-  int minions,
-) async {
+  int minions, {
+  String general = '__keep__',
+}) async {
   try {
-    await c.assignGuard(territoryId, crew, minions);
+    if (general == '__keep__') {
+      // Giữ nguyên tướng đang trấn giữ ở ô này (nếu có).
+      general = c.state?.guards
+              .firstWhere((g) => g.territoryId == territoryId,
+                  orElse: () => const GuardSlot(territoryId: -1, name: '', count: 0, tax: 0))
+              .generalId ??
+          '';
+    }
+    await c.assignGuard(territoryId, crew, minions, general);
   } on ApiException catch (e) {
     if (context.mounted) showToast(context, e.message, error: true);
   }
@@ -883,6 +864,141 @@ class _FormationChip extends StatelessWidget {
   }
 }
 
+class _GuardPanel extends StatefulWidget {
+  const _GuardPanel({required this.controller, required this.state});
+
+  final GameController controller;
+  final PlayerState state;
+
+  @override
+  State<_GuardPanel> createState() => _GuardPanelState();
+}
+
+class _GuardPanelState extends State<_GuardPanel> {
+  String? _province;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = widget.state;
+    final c = widget.controller;
+    final groups = <String, List<GuardSlot>>{};
+    for (final g in s.guards) {
+      groups
+          .putIfAbsent(g.province.isEmpty ? 'KHÁC' : g.province, () => [])
+          .add(g);
+    }
+    final names = groups.keys.toList();
+    final current = _province != null && groups.containsKey(_province)
+        ? _province!
+        : (names.isEmpty ? '' : names.first);
+    final rows = groups[current] ?? const <GuardSlot>[];
+    return NeonPanel(
+      borderColor: GH.cyan.withValues(alpha: 0.35),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('CHIA QUÂN GIỮ ĐẤT',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: labelStyle(size: 10.5, color: GH.text)),
+              ),
+              GestureDetector(
+                onTap: c.busy ? null : () => _autoAssign(context, c),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: GH.cyan.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border:
+                        Border.all(color: GH.cyan.withValues(alpha: 0.4)),
+                  ),
+                  child:
+                      Text('CHIA TỰ ĐỘNG', style: labelStyle(size: 9, color: GH.cyan)),
+                ),
+              ),
+            ],
+          ),
+          Text(
+            '${s.guardsTotal}/${s.crew} đàn em · '
+            '${s.guardedMinions}/${s.minionHealthy} lính',
+            style: labelStyle(size: 9.5),
+          ),
+          const SizedBox(height: 6),
+          if (s.guards.isEmpty)
+            Text(
+              'Chưa có địa bàn nào. Chiếm ô trước rồi chia quân.',
+              style: labelStyle(size: 10),
+            )
+          else ...[
+            // Tab ngang theo tỉnh: bấm chọn tỉnh, dưới chỉ hiện ô của tỉnh đó.
+            SizedBox(
+              height: 30,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: names.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 6),
+                itemBuilder: (context, i) {
+                  final name = names[i];
+                  final active = name == current;
+                  return GestureDetector(
+                    onTap: () => setState(() => _province = name),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: active
+                            ? GH.cyan.withValues(alpha: 0.16)
+                            : GH.panel2,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: active ? GH.cyan : GH.line),
+                      ),
+                      child: Text(
+                        '${name.toUpperCase()} · ${groups[name]!.length}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: active ? GH.cyan : GH.text,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 4),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 240),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final g in rows)
+                    _GuardRow(
+                      slot: g,
+                      canAddCrew: s.guardsTotal < s.crew,
+                      canAddMinions: s.guardedMinions < s.minionHealthy,
+                      busy: c.busy,
+                      generals: s.generals,
+                      onChanged: (crew, minions) =>
+                          _assignGuard(context, c, g.territoryId, crew, minions),
+                      onGeneral: (crew, minions, gid) => _assignGuard(
+                          context, c, g.territoryId, crew, minions,
+                          general: gid),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _GuardRow extends StatelessWidget {
   const _GuardRow({
     required this.slot,
@@ -890,6 +1006,8 @@ class _GuardRow extends StatelessWidget {
     required this.canAddMinions,
     required this.busy,
     required this.onChanged,
+    this.generals = const [],
+    this.onGeneral,
   });
 
   final GuardSlot slot;
@@ -897,6 +1015,8 @@ class _GuardRow extends StatelessWidget {
   final bool canAddMinions;
   final bool busy;
   final void Function(int crew, int minions) onChanged;
+  final List<GeneralInfo> generals;
+  final void Function(int crew, int minions, String generalId)? onGeneral;
 
   @override
   Widget build(BuildContext context) {
@@ -924,9 +1044,134 @@ class _GuardRow extends StatelessWidget {
               (v) => onChanged(v, slot.minions)),
           _line('lính', slot.minions, 10, canAddMinions,
               (v) => onChanged(slot.count, v)),
+          if (onGeneral != null) _generalLine(context),
         ],
       ),
     );
+  }
+
+  // Hàng tướng trấn giữ: +20 phòng thủ (+5/cấp), mỗi tướng giữ 1 ô.
+  Widget _generalLine(BuildContext context) {
+    final hasGen = slot.general.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          SizedBox(
+              width: 46, child: Text('tướng', style: labelStyle(size: 9.5))),
+          Expanded(
+            child: GestureDetector(
+              onTap: busy ? null : () => _pickGeneral(context),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: hasGen
+                      ? GH.gold.withValues(alpha: 0.12)
+                      : GH.panel2,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                      color: hasGen
+                          ? GH.gold.withValues(alpha: 0.4)
+                          : GH.line),
+                ),
+                child: Text(
+                  hasGen ? '★ ${slot.general} (+thủ)' : '+ đặt tướng giữ ô này',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: labelStyle(
+                      size: 9.5, color: hasGen ? GH.gold : GH.muted),
+                ),
+              ),
+            ),
+          ),
+          if (hasGen)
+            GestureDetector(
+              onTap: busy
+                  ? null
+                  : () => onGeneral!(slot.count, slot.minions, ''),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 6),
+                child: Text('BỎ',
+                    style: labelStyle(size: 9, color: GH.red)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickGeneral(BuildContext context) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: GH.panel,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: GH.line)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('CHỌN TƯỚNG TRẤN GIỮ',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 10),
+                if (generals.isEmpty)
+                  Text('Chưa mộ tướng nào. Mộ ở khung trên.',
+                      style: labelStyle(size: 10.5))
+                else
+                  for (final g in generals)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(ctx, g.id),
+                        child: NeonPanel(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          color: g.id == slot.generalId
+                              ? const Color(0xFF241B10)
+                              : GH.panel,
+                          borderColor: g.id == slot.generalId
+                              ? GH.gold.withValues(alpha: 0.5)
+                              : GH.line,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '${g.name} · Lv ${g.level}'
+                                  '${g.id == slot.generalId ? ' · đang giữ ô này' : ''}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                              Text('+${20 + g.level * 5} thủ',
+                                  style: labelStyle(
+                                      size: 9.5, color: GH.cyan)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (picked != null) {
+      onGeneral!(slot.count, slot.minions, picked);
+    }
   }
 
   Widget _line(
