@@ -138,8 +138,26 @@ class RankingScreen extends StatelessWidget {
             const SizedBox(height: 6),
             Expanded(
               child: rows.isEmpty
-                  ? const Center(
-                      child: CircularProgressIndicator(color: GH.pink))
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (controller.rankingError) ...[
+                            Text('Không lấy được bảng uy tín',
+                                style: labelStyle(size: 12)),
+                            const SizedBox(height: 10),
+                            PrimaryButton(
+                              label: 'THỬ LẠI',
+                              icon: Icons.refresh_rounded,
+                              color: GH.cyan,
+                              height: 38,
+                              onTap: () => controller.loadRanking(),
+                            ),
+                          ] else
+                            const CircularProgressIndicator(color: GH.pink),
+                        ],
+                      ),
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
                       itemCount: rows.length,

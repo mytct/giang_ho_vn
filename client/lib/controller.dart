@@ -24,6 +24,8 @@ class GameController extends ChangeNotifier {
   BossInfo? boss;
   bool booting = true;
   bool busy = false;
+  bool mapError = false;
+  bool rankingError = false;
 
   Timer? _poll;
 
@@ -103,15 +105,29 @@ class GameController extends ChangeNotifier {
       });
 
   Future<void> loadMap() async {
-    final payload = await api.map();
-    territories = payload.territories;
-    state = payload.state;
-    notifyListeners();
+    try {
+      final payload = await api.map();
+      territories = payload.territories;
+      state = payload.state;
+      mapError = false;
+      notifyListeners();
+    } on ApiException {
+      mapError = true;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> loadRanking() async {
-    ranking = await api.ranking();
-    notifyListeners();
+    try {
+      ranking = await api.ranking();
+      rankingError = false;
+      notifyListeners();
+    } on ApiException {
+      rankingError = true;
+      notifyListeners();
+      rethrow;
+    }
   }
 
   Future<void> upgrade(String businessId, int district) => _guard(() async {

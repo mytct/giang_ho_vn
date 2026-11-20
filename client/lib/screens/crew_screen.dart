@@ -141,9 +141,14 @@ class CrewScreen extends StatelessWidget {
                                 style: labelStyle(
                                     size: 10.5, color: GH.text)),
                             const Spacer(),
-                            Text('${s.availableCrew} quân đi chém',
-                                style: labelStyle(
-                                    size: 9.5, color: GH.cyan)),
+                            Flexible(
+                              child: Text(
+                                '${s.availableCrew} đi chém · ${s.crew}/500 sảnh',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: labelStyle(size: 9.5, color: GH.cyan),
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 8),

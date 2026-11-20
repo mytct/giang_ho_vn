@@ -1080,8 +1080,13 @@ func (p *Player) BribeCost() int64 {
 	return int64(p.Heat) * 80
 }
 
+// PrestigeMultiplier: Máu giang hồ cộng dồn mỗi lần ra tù, trần x3.
 func (p *Player) PrestigeMultiplier() float64 {
-	return 1 + 0.1*float64(p.Prestige)
+	m := 1 + 0.1*float64(p.Prestige)
+	if m > 3 {
+		m = 3
+	}
+	return m
 }
 
 func (p *Player) BonusHP() int { return p.Stats["hp"] * 25 }
@@ -1333,6 +1338,9 @@ func (s *Store) Recruit(tok string) (StateView, error) {
 		return StateView{}, err
 	}
 	s.accrue(p, time.Now())
+	if p.Crew >= MaxCrew {
+		return StateView{}, fmt.Errorf("băng đã đủ đông: tối đa %d đàn em", MaxCrew)
+	}
 	cost := RecruitCost(p.Crew)
 	if p.Money < cost {
 		return StateView{}, errors.New("không đủ tiền nuôi quân")
@@ -1875,7 +1883,16 @@ func (s *Store) gangBonusLocked(p *Player) float64 {
 	if g == nil {
 		return 1
 	}
-	b := 1 + 0.02*float64(len(g.Members)) + 0.01*float64(g.Level)
+	// Đồng minhAlive: chỉ đếm liên minh còn hạn (+3%/đồng minh, trần +6%).
+	now := time.Now()
+	allies := 0
+	for allyID := range g.Allies {
+		if a := s.gangs[allyID]; a != nil && g.allied(now, a.ID) {
+			allies++
+		}
+	}
+	b := 1 + 0.02*float64(len(g.Members)) + 0.01*float64(g.Level) +
+		0.03*float64(allies)
 	if b > 1.35 {
 		return 1.35
 	}

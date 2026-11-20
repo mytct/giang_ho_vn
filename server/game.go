@@ -179,6 +179,7 @@ func ItemByID(id string) *ItemDef {
 
 const (
 	MaxMinions        = 500
+	MaxCrew           = 500
 	minionRecruitBase = 120
 	minionHealCost    = 15
 	goodsPerOwned     = 0.5
@@ -571,7 +572,12 @@ func (p *Player) BusinessRate(def BusinessDef, region int) float64 {
 		return 0
 	}
 	racket := 1 + 0.15*float64(p.Racket[def.ID])
-	return float64(def.Base) * float64(lvl) * (1 + float64(p.Uy)/4000) *
+	// Hệ số uy có trần: uy farm vô hạn không được nhân thu nhập vô hạn.
+	uyMul := 1 + float64(p.Uy)/4000
+	if uyMul > 3 {
+		uyMul = 3
+	}
+	return float64(def.Base) * float64(lvl) * uyMul *
 		p.RegionMul(region) * racket
 }
 

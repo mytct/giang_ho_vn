@@ -77,8 +77,8 @@ class _ShellState extends State<Shell> {
                 child: Row(
                   children: [
                     _NavItem(
-                      icon: Icons.storefront_rounded,
-                      label: 'Bang',
+                      icon: Icons.cottage_rounded,
+                      label: 'Sân',
                       active: _index == 0,
                       onTap: () => _go(0),
                     ),
@@ -95,7 +95,7 @@ class _ShellState extends State<Shell> {
                       onTap: () => _go(2),
                     ),
                     _NavItem(
-                      icon: Icons.local_fire_department_rounded,
+                      icon: Icons.storefront_rounded,
                       label: 'Chợ đen',
                       active: _index == 3,
                       onTap: () => _go(3),
@@ -137,7 +137,6 @@ class _ShellState extends State<Shell> {
     if (index == 4) {
       widget.controller.loadRanking().catchError((Object _) {});
       widget.controller.loadCampaign().catchError((Object _) {});
-      widget.controller.loadGangs().catchError((Object _) {});
       widget.controller.loadGangs().catchError((Object _) {});
     }
   }

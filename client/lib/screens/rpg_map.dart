@@ -352,6 +352,17 @@ class _MapPainter extends CustomPainter {
               ..color = Colors.white.withValues(alpha: 0.85),
           );
         }
+        // Đất chưa vững (mới chiếm/mất đất 5 phút): viền vàng thứ hai.
+        // Vẽ tĩnh để không phải ticker repaint liên tục.
+        if (!isSelected && t != null && t.contested) {
+          canvas.drawPath(
+            path,
+            Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = 1.3
+              ..color = GH.gold.withValues(alpha: 0.85),
+          );
+        }
       }
 
       // Đảo/khúc rời của tỉnh: tô theo quận gần nhất để vẫn đúng màu băng.

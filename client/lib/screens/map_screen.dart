@@ -63,17 +63,26 @@ class _MapScreenState extends State<MapScreen> {
               child: Row(
                 children: [
                   Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _legend(GH.muted, 'Trống'),
-                          for (final row in _gangLegend())
+                    child: GestureDetector(
+                      // Bấm legend mở danh sách ĐẦY ĐỦ các chủ đất.
+                      onTap: () => _showLegendSheet(context),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _legend(GH.muted, 'Trống'),
+                            for (final row in _gangLegend())
+                              Padding(
+                                padding: const EdgeInsets.only(left: 12),
+                                child: _legend(row.$1, row.$2),
+                              ),
                             Padding(
-                              padding: const EdgeInsets.only(left: 12),
-                              child: _legend(row.$1, row.$2),
+                              padding: const EdgeInsets.only(left: 8),
+                              child: Icon(Icons.expand_more_rounded,
+                                  size: 14, color: GH.muted),
                             ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -83,6 +92,24 @@ class _MapScreenState extends State<MapScreen> {
                 ],
               ),
             ),
+            // Độ nóng chạm ngưỡng thì server chặn chém — báo trước ở đây.
+            if (s != null && s.heat >= 80)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+                child: Row(
+                  children: [
+                    Icon(Icons.local_fire_department_rounded,
+                        size: 12, color: GH.red),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        'NÓNG ${s.heat}° — không chém được, đút lót ở Sân trước',
+                        style: labelStyle(size: 9.5, color: GH.red),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 8),
             Expanded(
               child: c.territories.isEmpty
@@ -90,10 +117,23 @@ class _MapScreenState extends State<MapScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const CircularProgressIndicator(color: GH.pink),
-                          const SizedBox(height: 12),
-                          Text('Đang lấy bản đồ...',
-                              style: labelStyle(size: 12)),
+                          if (c.mapError) ...[
+                            Text('Không lấy được bản đồ từ server',
+                                style: labelStyle(size: 12)),
+                            const SizedBox(height: 10),
+                            PrimaryButton(
+                              label: 'THỬ LẠI',
+                              icon: Icons.refresh_rounded,
+                              color: GH.cyan,
+                              height: 38,
+                              onTap: () => c.loadMap().catchError((Object _) {}),
+                            ),
+                          ] else ...[
+                            const CircularProgressIndicator(color: GH.pink),
+                            const SizedBox(height: 12),
+                            Text('Đang lấy bản đồ...',
+                                style: labelStyle(size: 12)),
+                          ],
                         ],
                       ),
                     )
@@ -158,6 +198,129 @@ class _MapScreenState extends State<MapScreen> {
 
   String _shortName(String name) =>
       name.length <= 12 ? name : '${name.substring(0, 11)}…';
+
+  static const _npcNames = {
+    'npc:ran': 'Băng Rắn Độc',
+    'npc:ca': 'Băng Cá Sấu',
+    'npc:o': 'Băng Ó Đen',
+    'npc:chuot': 'Băng Chuột Cống',
+  };
+
+  // Sheet legend đầy đủ: mọi chủ đất có trên bản đồ, sắp theo số ô.
+  void _showLegendSheet(BuildContext context) {
+    final c = widget.controller;
+    final s = c.state;
+    if (s == null) return;
+    final counts = <String, int>{};
+    final names = <String, String>{};
+    for (final t in c.territories) {
+      final key = territoryGroup(t);
+      if (key.isEmpty) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+      names.putIfAbsent(key, () {
+        if (key.startsWith('npc:')) return _npcNames[key] ?? key;
+        return t.ownerName;
+      });
+    }
+    final keys = counts.keys.toList()
+      ..sort((a, b) => counts[b]!.compareTo(counts[a]!));
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: GH.panel,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(top: BorderSide(color: GH.line)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.65,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 38,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: GH.line,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text('AI GIỮ GÌ TRÊN BẢN ĐỒ',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: keys.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 6),
+                      itemBuilder: (_, i) {
+                        final key = keys[i];
+                        final color =
+                            gangColor(key, myId: s.playerId, myGangId: s.gangId);
+                        final mine =
+                            key == 'p:${s.playerId}' || key == s.gangId;
+                        return NeonPanel(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          color: mine
+                              ? const Color(0xFF1D1118)
+                              : GH.panel,
+                          borderColor: mine
+                              ? GH.pink.withValues(alpha: 0.6)
+                              : GH.line,
+                          child: Row(
+                            children: [
+                              PixelFlag(gangKey: key, size: 16),
+                              const SizedBox(width: 8),
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                    color: color, shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  names[key] ?? key,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: mine ? GH.pink : GH.text,
+                                  ),
+                                ),
+                              ),
+                              Text('${counts[key]} ô',
+                                  style: labelStyle(
+                                      size: 10.5, color: GH.cyan)),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   void _openTerritoryById(int id) {
     for (final t in widget.controller.territories) {
