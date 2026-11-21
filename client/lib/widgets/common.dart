@@ -24,7 +24,8 @@ class NeonPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final br = BorderRadius.circular(radius > 0 ? 2 : 0);
+    final rounded = radius > 0;
+    final br = BorderRadius.circular(rounded ? 2 : 0);
     return Container(
       decoration: BoxDecoration(
         color: GH.ink,
@@ -39,12 +40,17 @@ class NeonPanel extends StatelessWidget {
         decoration: BoxDecoration(
           color: color,
           borderRadius: br,
-          border: Border(
-            top: BorderSide(color: _bevelLight(borderColor), width: 2),
-            left: BorderSide(color: _bevelLight(borderColor), width: 2),
-            right: BorderSide(color: _bevelDark(borderColor), width: 2),
-            bottom: BorderSide(color: _bevelDark(borderColor), width: 2),
-          ),
+          // Flutter chỉ cho bo góc trên border màu đồng nhất: panel bo góc
+          // dùng viền phẳng, panel thường giữ bevel 4 cạnh.
+          border: rounded
+              ? Border.all(color: borderColor, width: 2)
+              : Border(
+                  top: BorderSide(color: _bevelLight(borderColor), width: 2),
+                  left: BorderSide(color: _bevelLight(borderColor), width: 2),
+                  right: BorderSide(color: _bevelDark(borderColor), width: 2),
+                  bottom:
+                      BorderSide(color: _bevelDark(borderColor), width: 2),
+                ),
         ),
         padding: padding,
         child: child,

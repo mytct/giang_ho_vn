@@ -77,14 +77,20 @@ class BrawlGame extends FlameGame {
   FightFrames? myFrames;
   FightFrames? enemyFrames;
 
-  /// Các bộ đàn em (atlas_m1…m8) để đám đông mỗi đứa một kiểu.
+  /// Các bộ đàn em (atlas_m1…m12) để đám đông mỗi đứa một kiểu.
   final List<FightFrames> variants = [];
+
+  /// Random bộ đàn em một lần mỗi trận: cùng một đứa giữ nguyên bộ
+  /// trong suốt trận để sprite không nhấp nháy giữa các frame.
+  final math.Random _variantRnd = math.Random();
+  final Map<String, FightFrames> _variantPick = {};
 
   FightFrames? minionFrames(int i, {required bool mine}) {
     if (variants.isEmpty) return null;
-    // Hai bên lệch hệ số để cùng index không ra cùng một bộ.
-    final n = variants.length;
-    return variants[(mine ? i * 3 + 1 : i * 5 + 4) % n];
+    return _variantPick.putIfAbsent(
+      '${mine ? 'm' : 'e'}$i',
+      () => variants[_variantRnd.nextInt(variants.length)],
+    );
   }
 
   bool get myGun => myWeapon.contains('Súng') || myWeapon.contains('Hàng nóng');
@@ -98,16 +104,33 @@ class BrawlGame extends FlameGame {
     // nền + sprite nạp xong đâu thì hiện dần đó.
     add(BrawlStage(this));
     try {
-      bg = await loadSceneImage('bg_brawl');
+      // Mỗi trận một bối cảnh ngẫu nhiên — bộ nền trận có sàn trống 2/3 dưới
+      // để đàn em đứng đất chứ không đứng lên bàn ghế.
+      const bgs = [
+        'bg_fight_alley',
+        'bg_fight_karaoke',
+        'bg_fight_market',
+        'bg_fight_benxe',
+      ];
+      bg = await loadSceneImage(bgs[_variantRnd.nextInt(bgs.length)]);
     } catch (_) {}
     final sets = await Future.wait([
       FightFrames.load('p'),
       FightFrames.load('e'),
-      for (final v in const ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'])
+      for (final v in const [
+        'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8',
+        'm9', 'm10', 'm11', 'm12',
+      ])
         FightFrames.load(v),
     ]);
-    myFrames = sets[0];
-    enemyFrames = sets[1];
+    // Trùm hai bên cũng random mỗi trận, chọn từ mọi bộ đã nạp; nếu còn bộ
+    // khác thì bên địch không trùng sprite bên mình.
+    final loaded = sets.whereType<FightFrames>().toList();
+    if (loaded.isNotEmpty) {
+      myFrames = loaded[_variantRnd.nextInt(loaded.length)];
+      final rest = loaded.where((f) => !identical(f, myFrames)).toList();
+      enemyFrames = rest.isEmpty ? myFrames : rest[_variantRnd.nextInt(rest.length)];
+    }
     variants.addAll(sets.skip(2).whereType<FightFrames>());
   }
 }
@@ -315,6 +338,13 @@ class BrawlStage extends PositionComponent {
   double _knockMe = 0;
   double _knockEn = 0;
 
+  /// Ăn đòn thì loạng choạng tới thời điểm này (ms elapsed) mới đánh trả được.
+  double _stagMeUntil = -1;
+  double _stagEnUntil = -1;
+
+  /// Đàn em bên bị đánh cũng chấn động: key = i (bên mình) / -i (địch).
+  final Map<int, double> _minionStagger = {};
+
   /// Tông áo từng nhân vật: rất nhạt để không phá màu sprite gốc.
   static const _tints = [
     Color(0xFFFFFFFF),
@@ -336,8 +366,8 @@ class BrawlStage extends PositionComponent {
   Color _tintOf(int i, {required bool mine}) => _tints[
       (_noise(mine ? i : i + 31, 13) * _tints.length).floor() % _tints.length];
 
-  /// Số người mỗi bên trong cảnh hỗn chiến (1 đại ca + 15 đàn em).
-  static const _crowd = 16;
+  /// Số người mỗi bên trong cảnh hỗn chiến (1 đại ca + 21 đàn em).
+  static const _crowd = 22;
 
   int get _weaponTier {
     final name = game.myWeapon;
@@ -422,11 +452,16 @@ class BrawlStage extends PositionComponent {
     _segs.add(_Seg(false, 'run', 0, firstRAt - approach, -0.55, 0.20));
     for (final e in _rEvs) {
       final home = e.mine && game.myGun ? 0.12 : 0.20;
-      _segs.add(_Seg(e.mine, 'atk', e.rAt, e.rAt + strike, home, home + 0.11));
+      // Lao hẳn vào người đối thủ rồi rút về thế thủ.
+      _segs.add(_Seg(e.mine, 'atk', e.rAt, e.rAt + strike, home, home + 0.17));
       if (e.real) {
         final defHome = !e.mine && game.myGun ? 0.12 : 0.20;
+        // Trúng đòn: loạng choạng lùi sâu, rồi phản công lại ngay một nhịp.
         _segs.add(
-          _Seg(!e.mine, 'hurt', e.rAt, e.rAt + 190, defHome, defHome - 0.07),
+          _Seg(!e.mine, 'hurt', e.rAt, e.rAt + 320, defHome, defHome - 0.12),
+        );
+        _segs.add(
+          _Seg(!e.mine, 'atk', e.rAt + 330, e.rAt + 540, defHome - 0.10, defHome + 0.13),
         );
       }
     }
@@ -451,8 +486,8 @@ class BrawlStage extends PositionComponent {
     }
     _t += dt;
     _elapsed += dt * 1000;
-    _knockMe = math.max(0, _knockMe - dt * 6);
-    _knockEn = math.max(0, _knockEn - dt * 6);
+    _knockMe = math.max(0, _knockMe - dt * 4);
+    _knockEn = math.max(0, _knockEn - dt * 4);
     _shake = math.max(0, _shake - dt * 3.5);
     _lungeMe = math.max(0, _lungeMe - dt * 4);
     _lungeEn = math.max(0, _lungeEn - dt * 4);
@@ -578,10 +613,15 @@ class BrawlStage extends PositionComponent {
       final enemyX = size.x * 0.56;
       final myX = size.x * 0.40;
       if (!e.real) {
-        // Đòn đệm: có chạy tới và vung vũ khí, không trừ máu.
+        // Đòn đệm: lao tới vung vũ khí, đối thủ vẫn phải phản lực nhẹ.
         if (e.mine) {
           _lungeMe = 1;
           _shake = math.max(_shake, 0.3);
+          _knockEn = math.max(_knockEn, 0.6);
+          _stagEnUntil = math.max(
+            _stagEnUntil,
+            _elapsed + 240.0,
+          );
           _spawnSparks(
             enemyX,
             size.y * 0.60,
@@ -598,6 +638,11 @@ class BrawlStage extends PositionComponent {
         } else {
           _lungeEn = 1;
           _shake = math.max(_shake, 0.3);
+          _knockMe = math.max(_knockMe, 0.6);
+          _stagMeUntil = math.max(
+            _stagMeUntil,
+            _elapsed + 240.0,
+          );
           _spawnSparks(myX, size.y * 0.60, GH.red.withValues(alpha: 0.5));
           _arcs.add(
             _Arc(
@@ -648,8 +693,10 @@ class BrawlStage extends PositionComponent {
           true,
           count: e.crit ? 18 : 10,
         );
-        _knockEn = 1;
-        if (e.crit) _hitStop = 0.06;
+        _knockEn = e.crit ? 1.8 : 1.2;
+        _stagEnUntil = _elapsed + (e.crit ? 620.0 : 380.0);
+        _staggerCrowd(false);
+        _hitStop = e.crit ? 0.06 : 0.035;
         if (game.myGun) {
           _muzzles.add(_Muzzle(size.x * 0.41, size.y * 0.64));
           _tracers.add(
@@ -709,8 +756,10 @@ class BrawlStage extends PositionComponent {
         _flashMe = 1;
         _spawnSparks(myX, size.y * 0.60, GH.red);
         _spawnBlood(myX, size.y * 0.60, false, count: e.crit ? 16 : 9);
-        _knockMe = 1;
-        if (e.crit) _hitStop = 0.05;
+        _knockMe = e.crit ? 1.8 : 1.2;
+        _stagMeUntil = _elapsed + (e.crit ? 620.0 : 380.0);
+        _staggerCrowd(true);
+        _hitStop = e.crit ? 0.05 : 0.035;
         _arcs.add(_Arc(size.x * 0.44, size.y * 0.64, true, GH.red));
         _popups.add(_Popup(myX, size.y * 0.42, '-${e.dmg}', GH.red, _elapsed));
       }
@@ -822,13 +871,15 @@ class BrawlStage extends PositionComponent {
   }) {
     const introEnd = 2000.0;
     final idx = i - 1;
-    // 15 đàn em: 5 hàng × 3 cột, 2 hàng sau lùi sâu cho cảnh đầy hơn.
-    const rows = 5;
+    // 21 đàn em: 7 hàng × 3 cột, dàn tương đối gần camera.
+    const rows = 7;
     final row = idx % rows;
     final col = idx ~/ rows;
     final depth = row / (rows - 1);
-    final hh = 0.24 + 0.10 * depth;
-    final cy = 0.57 + 0.30 * depth + (_noise(i, 1) - 0.5) * 0.02;
+    // Chiều sâu vừa phải: chân hàng xa ~52%, hàng gần ~90% màn hình,
+    // cỡ người nhỏ → lớn theo chiều sâu.
+    final hh = 0.14 + 0.16 * depth;
+    final cy = 0.52 + 0.38 * depth + (_noise(i, 1) - 0.5) * 0.015;
     final home = mine ? 0.02 + col * 0.10 : 0.98 - col * 0.10;
     final pairX = 0.12 + col * 0.33 + (_noise(i, 2) - 0.5) * 0.10;
     final gap = 0.03 + _noise(i, 3) * 0.05;
@@ -876,11 +927,30 @@ class BrawlStage extends PositionComponent {
     // Mỗi cú vung 190ms, nghỉ 190–370ms tuỳ đứa — đánh đều tay, không quá nhanh.
     const attackMs = 190.0;
     final period = 380.0 + _noise(i, 6) * 180.0;
+    final stagUntil = _minionStagger[mine ? i : -i];
+    if (stagUntil != null && _elapsed < stagUntil) {
+      // Bị chói đòn bên cạnh: lùi một nhịp rồi mới đánh tiếp.
+      final prog = (1 - (stagUntil - _elapsed) / 580.0).clamp(0.0, 1.0);
+      return (
+        cx: spot + (mine ? -1 : 1) * 0.028 * math.sin(math.pi * (0.3 + 0.7 * prog)),
+        cy: cy,
+        hh: hh,
+        state: 'hurt',
+        cyc: 0,
+      );
+    }
     final since =
         (_elapsed - introEnd + _noise(i, 7) * period) % period;
     final attacking = since < attackMs;
+    // Đối phương cùng cặp đang choáng thì dồn lên presses thêm một nhịp.
+    final foeStag = _minionStagger[mine ? -i : i];
+    final pressing = foeStag != null && _elapsed < foeStag;
     final swing = attacking ? math.sin(math.pi * since / attackMs) : 0.0;
-    final cx = spot + (mine ? 1 : -1) * swing * (0.02 + _noise(i, 8) * 0.04);
+    final cx = spot +
+        (mine ? 1 : -1) *
+            swing *
+            (0.02 + _noise(i, 8) * 0.04) *
+            (pressing ? 1.7 : 1.0);
     final String state;
     if (attacking) {
       state = 'atk';
@@ -915,6 +985,17 @@ class BrawlStage extends PositionComponent {
     }
   }
 
+  /// Trúng đòn: 1–2 đàn em bên bị đánh cũng bị văng đánh lừa nhịp, lùi lại.
+  void _staggerCrowd(bool mine) {
+    for (var k = 0; k < 2; k++) {
+      if (_rnd.nextDouble() < 0.6 && _crowd > 1) {
+        final i = 1 + _rnd.nextInt(_crowd - 1);
+        _minionStagger[mine ? i : -i] =
+            _elapsed + 300 + _rnd.nextDouble() * 280;
+      }
+    }
+  }
+
   _Pose _pose({required bool mine}) {
     _Seg? best;
     for (final s in _segs) {
@@ -935,8 +1016,9 @@ class BrawlStage extends PositionComponent {
       dash = best.dashFrom + (best.dashTo - best.dashFrom) * k;
       state = best.kind;
     } else if (!(mine && game.myGun) && _elapsed > 2200) {
-      // Không có đòn thật thì vẫn vung tay, nhưng có nhịp thở giữa các cú.
-      final cycle = mine ? 460.0 : 510.0;
+      // Không có đòn thật thì vẫn ra dáng giao đấu, nhưng thưa nhịp để trận
+      // đánh theo trao đổi đòn (đánh – ăn đòn – phản công) chứ không vung hồi hộp.
+      final cycle = mine ? 720.0 : 790.0;
       final ph = _elapsed % cycle;
       if (ph < 190) {
         t = ph / 190;
@@ -952,6 +1034,13 @@ class BrawlStage extends PositionComponent {
         return _Pose('flee', home - 0.75 * flee, flee);
       }
       return _Pose('win', dash * (1 - _koTime), t);
+    }
+    final stagUntil = mine ? _stagMeUntil : _stagEnUntil;
+    if (_elapsed < stagUntil) {
+      // Vừa ăn đòn: loạng choạng lùi về phía nhà, chưa đánh trả được ngay.
+      final prog = (1 - (stagUntil - _elapsed) / 620.0).clamp(0.0, 1.0);
+      final recoil = 0.05 * math.sin(math.pi * (0.3 + 0.7 * prog));
+      return _Pose('hurt', dash - recoil, t);
     }
     return _Pose(state, dash, t);
   }
@@ -1072,7 +1161,7 @@ class BrawlStage extends PositionComponent {
         if (isLeader) {
           final pose = _pose(mine: false);
           slot = _frameFor(pose, gun: false, koTime: koTime);
-          cx = w * (0.74 - pose.dash) + _knockEn * w * 0.03;
+          cx = w * (0.74 - pose.dash) + _knockEn * w * 0.05;
           height = h * 0.36;
           // Bỏ chạy thì quay mặt về hướng chạy.
           flip = pose.state != 'flee';
@@ -1132,7 +1221,7 @@ class BrawlStage extends PositionComponent {
         if (isLeader) {
           final pose = _pose(mine: true);
           slot = _frameFor(pose, gun: game.myGun, koTime: koTime);
-          cx = w * (0.26 + pose.dash) - _knockMe * w * 0.03;
+          cx = w * (0.26 + pose.dash) - _knockMe * w * 0.05;
           height = h * 0.36;
           flip = pose.state == 'flee';
         } else {
