@@ -104,13 +104,14 @@ class BrawlGame extends FlameGame {
     // nền + sprite nạp xong đâu thì hiện dần đó.
     add(BrawlStage(this));
     try {
-      // Mỗi trận một bối cảnh ngẫu nhiên — bộ nền trận có sàn trống 2/3 dưới
-      // để đàn em đứng đất chứ không đứng lên bàn ghế.
+      // Mỗi trận một bối cảnh ngẫu nhiên — cùng bố cục bg_brawl: vật cản hai
+      // bên mép, 2/3 dưới là sàn phẳng có vũng đèn để đàn em đứng đất.
       const bgs = [
-        'bg_fight_alley',
-        'bg_fight_karaoke',
-        'bg_fight_market',
-        'bg_fight_benxe',
+        'bg_brawl',
+        'bg_fight_cuotroi',
+        'bg_fight_phelieu',
+        'bg_fight_chora',
+        'bg_fight_bentau',
       ];
       bg = await loadSceneImage(bgs[_variantRnd.nextInt(bgs.length)]);
     } catch (_) {}
