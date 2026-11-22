@@ -141,6 +141,70 @@ func (s *Store) SeedDemo() map[string]string {
 	a.Works = map[int]map[string]int{HomeProvince: {"cho": 2, "trai": 1, "song": 1}}
 	a.Goods = 800
 
+	// ---- Băng fake thêm cho thế giới đông đúc ----
+	mx, tokMX := mkPlayer("Mắt Xanh", 8, 40000, 2600, 3, 5, 1)
+	mx2, _ := mkPlayer("Sẹo Mặt", 6, 16000, 800, 2, 3, 0)
+	mx3, _ := mkPlayer("Bạch Tuộc", 5, 14000, 650, 2, 3, 0)
+	mx4, _ := mkPlayer("Cộn Tay", 4, 11000, 500, 2, 2, 0)
+	mx5, _ := mkPlayer("Đao Phủ", 4, 10000, 450, 1, 2, 0)
+	dc, _ := mkPlayer("Dao Cựa", 5, 15000, 550, 2, 3, 0)
+	dc2, _ := mkPlayer("Răng Vàng", 4, 9000, 400, 1, 2, 0)
+	dc3, _ := mkPlayer("Mút Gỗ", 3, 7000, 300, 1, 2, 0)
+	lt, tokLT := mkPlayer("Lửa Thiêng", 6, 20000, 900, 3, 4, 0)
+	lt2, _ := mkPlayer("Khói Thuốc", 4, 10000, 420, 2, 2, 0)
+	md, _ := mkPlayer("Ma Da", 4, 12000, 480, 2, 2, 0)
+	md2, _ := mkPlayer("Bóng Đêm", 3, 8000, 320, 1, 1, 0)
+	sd, _ := mkPlayer("Sóng Đèo", 3, 9000, 350, 1, 2, 0)
+	dm, _ := mkPlayer("Đêm Mưa", 2, 6000, 250, 1, 1, 0)
+
+	gangMX := mkGang("Băng Mắt Xanh", mx, mx2, mx3, mx4, mx5)
+	gangDC := mkGang("Băng Dao Cựa", dc, dc2, dc3)
+	gangLT := mkGang("Băng Lửa Thiêng", lt, lt2)
+	gangMD := mkGang("Băng Ma Da", md, md2)
+	gangSD := mkGang("Băng Sóng Đèo", sd)
+	gangDM := mkGang("Băng Đêm Mưa", dm)
+
+	gangMX.Treasury = 45000
+	gangMX.WarScore = 6
+	gangDC.Treasury = 6000
+	gangLT.Treasury = 9000
+	gangLT.WarScore = 1
+	gangMD.Treasury = 3000
+	gangSD.Treasury = 1500
+	gangDM.Treasury = 800
+	lt.Bounty = 800
+
+	// Mắt Xanh và Lửa Thiêng đang chém nhau.
+	gangMX.Wars[gangLT.ID] = untilWar
+	gangLT.Wars[gangMX.ID] = untilWar
+	// Dao Cựa nộp cống cho Rắn Độc (băng chủ nhận tối đa 2 băng cống).
+	gangDC.TributeTo = gangA.ID
+	// Dao Cựa kết minh với Ma Da.
+	gangDC.Allies[gangMD.ID] = untilAlly
+	gangMD.Allies[gangDC.ID] = untilAlly
+
+	// Địa bàn rải khắp miền cho các băng mới.
+	mxBase := 18 * DistrictSize
+	for k := 0; k < 4; k++ {
+		own(s.territories[mxBase+k], mx)
+	}
+	dcBase := 21 * DistrictSize
+	for k := 0; k < 2; k++ {
+		own(s.territories[dcBase+k], dc)
+	}
+	ltBase := 20 * DistrictSize
+	own(s.territories[ltBase], lt)
+	own(s.territories[ltBase+1], lt2)
+	mdBase := 22 * DistrictSize
+	own(s.territories[mdBase], md)
+	own(s.territories[mdBase+1], md2)
+	own(s.territories[23*DistrictSize], sd)
+	s.recalcLandLocked(mx)
+	s.recalcLandLocked(dc)
+	s.recalcLandLocked(lt)
+	s.recalcLandLocked(md)
+	s.recalcLandLocked(sd)
+
 	a.Contract = &Contract{
 		ID: "c_win", Title: "Dằn mặt", Desc: "Thắng 2 trận trong 15 phút",
 		Kind: "win", Target: 2, Deposit: 360,
@@ -194,11 +258,13 @@ func (s *Store) SeedDemo() map[string]string {
 		p.DevUnlimited = true
 	}
 	s.demoTokens = map[string]string{
-		"Đại Ca A":  tokA,
-		"Trùm C":    tokC,
-		"Chuột Nhỏ": tokD,
-		"Ó Đen":     tokE,
-		"Lính Lẻ":   tokF,
+		"Đại Ca A":   tokA,
+		"Trùm C":     tokC,
+		"Chuột Nhỏ":  tokD,
+		"Ó Đen":      tokE,
+		"Lính Lẻ":    tokF,
+		"Mắt Xanh":   tokMX,
+		"Lửa Thiêng": tokLT,
 	}
 	s.demoSeeded = true
 	return s.demoTokens

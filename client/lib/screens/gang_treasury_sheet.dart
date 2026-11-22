@@ -71,6 +71,23 @@ Future<void> showGangTreasurySheet(
                         size: 10,
                         color: boostLeft > 0 ? GH.red : GH.muted),
                   ),
+                  if (!g.isLeader)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.lock_rounded,
+                              size: 12, color: GH.gold),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              'Chỉ băng trưởng (${g.leader}) mới tiêu quỹ',
+                              style: labelStyle(size: 10, color: GH.gold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   const SizedBox(height: 14),
                   _option(
                     icon: Icons.trending_up_rounded,
@@ -78,7 +95,10 @@ Future<void> showGangTreasurySheet(
                     title: 'Nâng lực băng',
                     desc: '+1% lực toàn băng vĩnh viễn',
                     cost: g.upgradeCost,
-                    enabled: g.treasury >= g.upgradeCost && !c.busy,
+                    short: g.treasury >= g.upgradeCost
+                        ? null
+                        : g.upgradeCost - g.treasury,
+                    enabled: g.isLeader && !c.busy,
                     onTap: () => _buy(ctx, c, 'power', 'Đã nâng lực băng'),
                   ),
                   const SizedBox(height: 8),
@@ -90,7 +110,9 @@ Future<void> showGangTreasurySheet(
                         ? 'Đang hồi, còn ${(shieldLeft / 60).ceil()} phút'
                         : 'Cả băng không bị đánh trong 30 phút',
                     cost: 2500,
-                    enabled: g.treasury >= 2500 && !c.busy && shieldLeft <= 0,
+                    short:
+                        g.treasury >= 2500 ? null : 2500 - g.treasury,
+                    enabled: g.isLeader && !c.busy && shieldLeft <= 0,
                     onTap: () => _buy(ctx, c, 'shield', 'Khiên băng đã bật'),
                   ),
                   const SizedBox(height: 8),
@@ -100,7 +122,8 @@ Future<void> showGangTreasurySheet(
                     title: 'Chiến phí 30 phút',
                     desc: '+10% lực khi đi chém',
                     cost: 2000,
-                    enabled: g.treasury >= 2000 && !c.busy,
+                    short: g.treasury >= 2000 ? null : 2000 - g.treasury,
+                    enabled: g.isLeader && !c.busy,
                     onTap: () => _buy(ctx, c, 'boost', 'Chiến phí đã bật'),
                   ),
                   const SizedBox(height: 12),
@@ -124,36 +147,43 @@ Widget _option({
   required String title,
   required String desc,
   required int cost,
+  required int? short,
   required bool enabled,
   required VoidCallback onTap,
 }) {
-  return NeonPanel(
-    child: Row(
-      children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 12.5, fontWeight: FontWeight.w800)),
-              Text(desc, style: labelStyle(size: 9.5)),
-            ],
+  final canTap = enabled && short == null;
+  return Opacity(
+    opacity: short == null ? 1 : 0.45,
+    child: NeonPanel(
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w800)),
+                Text(desc, style: labelStyle(size: 9.5)),
+              ],
+            ),
           ),
-        ),
-        SizedBox(
-          width: 92,
-          child: PrimaryButton(
-            label: formatMoney(cost),
-            height: 34,
-            color: color,
-            enabled: enabled,
-            onTap: onTap,
+          SizedBox(
+            width: 92,
+            child: PrimaryButton(
+              label: short == null
+                  ? formatMoney(cost)
+                  : 'THIẾU ${formatMoney(short)}',
+              height: 34,
+              color: color,
+              enabled: canTap,
+              onTap: onTap,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     ),
   );
 }

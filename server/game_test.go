@@ -784,8 +784,8 @@ func TestDemoSeedWorld(t *testing.T) {
 	}
 
 	rows := st.Gangs(tokA)
-	if len(rows) != 4 {
-		t.Fatalf("phải có 4 băng, got %d", len(rows))
+	if len(rows) != 10 {
+		t.Fatalf("phải có 10 băng, got %d", len(rows))
 	}
 	if rows[0].Tier != 1 {
 		t.Fatalf("băng mạnh nhất phải tier 1, got %d", rows[0].Tier)
@@ -813,8 +813,8 @@ func TestDemoDiplomacyEdges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(gangs) != 4 {
-		t.Fatalf("phải 4 băng, got %d", len(gangs))
+	if len(gangs) != 10 {
+		t.Fatalf("phải 10 băng, got %d", len(gangs))
 	}
 	names := map[string]string{}
 	for _, g := range gangs {

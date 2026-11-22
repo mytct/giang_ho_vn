@@ -98,7 +98,9 @@ class RankingScreen extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             SizedBox(
-              height: 210,
+              height: controller.gangs.isEmpty
+                  ? 40
+                  : (controller.gangs.length * 56.0).clamp(56.0, 300.0),
               child: controller.gangs.isEmpty
                   ? Center(
                       child: Text('Chưa có băng nào',
@@ -289,9 +291,28 @@ class _RankRow extends StatelessWidget {
               const SizedBox(height: 2),
               Text('lực ${row.power} · ${row.owned} ô',
                   style: labelStyle(size: 9.5)),
-              if (row.bounty > 0)
-                Text('TRUY NÃ ${formatMoney(row.bounty)}',
-                    style: labelStyle(size: 9, color: GH.gold)),
+              if (row.bounty > 0) ...[
+                const SizedBox(height: 3),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: GH.gold.withValues(alpha: 0.12),
+                    border:
+                        Border.all(color: GH.gold.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.gavel_rounded,
+                          size: 9, color: GH.gold),
+                      const SizedBox(width: 3),
+                      Text('TRUY NÃ ${formatMoney(row.bounty)}',
+                          style: labelStyle(size: 8.5, color: GH.gold)),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -469,6 +490,8 @@ class _GangRow extends StatelessWidget {
           children: [
             _TierChip(tier: gang.tier),
             const SizedBox(width: 8),
+            PixelFlag(gangKey: gang.id, flag: gang.flag, size: 18),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -609,23 +632,23 @@ class _GangSection extends StatelessWidget {
         color: const Color(0xFF101A19),
         borderColor: GH.cyan.withValues(alpha: 0.35),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
                 Container(
-                  width: 38,
-                  height: 38,
+                  width: 40,
+                  height: 40,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: GH.cyan.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(10),
                     border:
                         Border.all(color: GH.cyan.withValues(alpha: 0.35)),
                   ),
                   child: PixelFlag(
                     gangKey: s.gangId,
                     flag: mine?.flag,
-                    size: 26,
+                    size: 28,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -644,137 +667,143 @@ class _GangSection extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w800)),
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w900)),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 2),
                       Text(
-                        '${s.gangMembers}/10 thành viên'
-                        '${mine == null ? '' : ' · ${mine.power} lực · ${mine.owned} ô'}',
+                        mine == null
+                            ? 'Đang theo băng này'
+                            : 'Lv ${mine.level} · ${mine.allies} đồng minh · ${mine.wars} chiến',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: labelStyle(size: 10.5),
+                        style: labelStyle(size: 9.5, color: GH.muted),
                       ),
-                      if (mine != null)
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Lv ${mine.level} · ${mine.allies} đồng minh · ${mine.wars} chiến · ${formatMoney(mine.treasury)} quỹ',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: labelStyle(
-                                    size: 9.5, color: GH.muted),
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => showGangChatSheet(context, controller),
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 6),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: GH.cyan.withValues(alpha: 0.14),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text('CHAT',
-                                    style: labelStyle(
-                                        size: 8, color: GH.cyan)),
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => showFlagEditorSheet(
-                                  context, controller, s.gangId, mine.flag),
-                              child: Container(
-                                margin: const EdgeInsets.only(right: 6),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: GH.pink.withValues(alpha: 0.14),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text('CỜ',
-                                    style: labelStyle(
-                                        size: 8, color: GH.pink)),
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => showGangTreasurySheet(
-                                  context, controller, mine),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: GH.gold.withValues(alpha: 0.14),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text('QUỸ',
-                                    style: labelStyle(
-                                        size: 8, color: GH.gold)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      Text(
-                        (mine?.warOpen ?? false)
-                            ? 'Chiến băng ĐANG MỞ · ${mine?.warScore ?? 0} điểm · thưởng 22:00'
-                            : 'Chiến băng 20:00–22:00 · ${mine?.warScore ?? 0} điểm · thưởng 22:00',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: labelStyle(
-                            size: 9,
-                            color: (mine?.warOpen ?? false)
-                                ? GH.red
-                                : GH.muted),
-                      ),
-                      if ((mine?.tributeToName ?? '').isNotEmpty)
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Đang nộp 10% cho ${mine!.tributeToName}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: labelStyle(size: 9, color: GH.red),
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => _breakTribute(context, controller),
-                              child: Text('CẮT',
-                                  style: labelStyle(
-                                      size: 9, color: GH.gold)),
-                            ),
-                          ],
-                        )
-                      else if ((mine?.tributes ?? 0) > 0)
-                        Text(
-                          'Đang thu cống ${mine!.tributes} băng',
-                          style: labelStyle(size: 9, color: GH.green),
-                        ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 7, vertical: 4),
                   decoration: BoxDecoration(
                     color: GH.cyan.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(6),
+                    border:
+                        Border.all(color: GH.cyan.withValues(alpha: 0.45)),
                   ),
-                  child: Text('+$bonus% lực',
+                  child: Text('+$bonus% LỰC',
                       style: labelStyle(size: 9.5, color: GH.cyan)),
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _miniStat('THÀNH VIÊN',
+                    '${s.gangMembers}/${mine?.maxMembers ?? 10}', GH.cyan),
+                _statDivider(),
+                _miniStat('LỰC BĂNG',
+                    mine == null ? '—' : formatMoney(mine.power), GH.text),
+                _statDivider(),
+                _miniStat('QUỸ',
+                    mine == null ? '—' : formatMoney(mine.treasury), GH.gold),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(
+                  warName.isEmpty && (mine?.warOpen ?? false)
+                      ? Icons.whatshot_rounded
+                      : Icons.schedule_rounded,
+                  size: 12,
+                  color: (mine?.warOpen ?? false) ? GH.red : GH.muted,
+                ),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    (mine?.warOpen ?? false)
+                        ? 'Chiến băng ĐANG MỞ · ${mine?.warScore ?? 0} điểm · thưởng 22:00'
+                        : 'Chiến băng 20:00–22:00 · ${mine?.warScore ?? 0} điểm · thưởng 22:00',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: labelStyle(
+                        size: 9.5,
+                        color: (mine?.warOpen ?? false)
+                            ? GH.red
+                            : GH.muted),
+                  ),
+                ),
+              ],
+            ),
+            if ((mine?.tributeToName ?? '').isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.trending_down_rounded,
+                        size: 12, color: GH.red),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        'Đang nộp 10% cho ${mine!.tributeToName}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: labelStyle(size: 9.5, color: GH.red),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => _breakTribute(context, controller),
+                      child: Text('CẮT',
+                          style: labelStyle(size: 9.5, color: GH.gold)),
+                    ),
+                  ],
+                ),
+              )
+            else if ((mine?.tributes ?? 0) > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.trending_up_rounded,
+                        size: 12, color: GH.green),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        'Đang thu cống ${mine!.tributes} băng',
+                        style: labelStyle(size: 9.5, color: GH.green),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (mine != null) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _chipBtn(
+                      context, 'CHAT', Icons.chat_bubble_rounded, GH.cyan,
+                      () => showGangChatSheet(context, controller)),
+                  const SizedBox(width: 6),
+                  _chipBtn(context, 'ĐỔI CỜ', Icons.flag_rounded, GH.pink,
+                      () => showFlagEditorSheet(
+                          context, controller, s.gangId, mine.flag)),
+                  const SizedBox(width: 6),
+                  _chipBtn(context, 'QUỸ BĂNG', Icons.savings_rounded,
+                      GH.gold,
+                      () => showGangTreasurySheet(context, controller, mine)),
+                ],
+              ),
+            ],
             if (warName.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
                   color: GH.red.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: GH.red.withValues(alpha: 0.45)),
                 ),
                 child: Row(
@@ -795,19 +824,29 @@ class _GangSection extends StatelessWidget {
             if (warName.isEmpty &&
                 _warMinutes(mine?.warCooldownUntil ?? 0) > 0) ...[
               const SizedBox(height: 6),
-              Text(
-                'Vừa dứt chiến · nghỉ ${_warMinutes(mine!.warCooldownUntil)} phút mới tuyên chiến tiếp',
-                style: labelStyle(size: 9, color: GH.gold),
+              Row(
+                children: [
+                  const Icon(Icons.hourglass_bottom_rounded,
+                      size: 12, color: GH.gold),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      'Vừa dứt chiến · nghỉ ${_warMinutes(mine!.warCooldownUntil)} phút mới tuyên chiến tiếp',
+                      style: labelStyle(size: 9.5, color: GH.gold),
+                    ),
+                  ),
+                ],
               ),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
+                  flex: 2,
                   child: PrimaryButton(
                     label: 'TUYÊN CHIẾN',
                     color: GH.red,
-                    height: 34,
+                    height: 36,
                     enabled: warName.isEmpty &&
                         _warMinutes(mine?.warCooldownUntil ?? 0) == 0,
                     onTap: () => _gangPicker(context, war: true),
@@ -818,13 +857,77 @@ class _GangSection extends StatelessWidget {
                   child: PrimaryButton(
                     label: 'RỜI BĂNG',
                     color: GH.muted,
-                    height: 34,
+                    height: 36,
                     onTap: () => _confirmLeave(context),
                   ),
                 ),
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statDivider() => Container(
+        width: 2,
+        height: 26,
+        color: GH.line,
+        margin: const EdgeInsets.symmetric(horizontal: 10),
+      );
+
+  Widget _miniStat(String label, String value, Color color) {
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: GH.pixelFont,
+              color: color,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(label, style: labelStyle(size: 8.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _chipBtn(
+    BuildContext context,
+    String label,
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            border: Border.all(color: color.withValues(alpha: 0.45)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: labelStyle(size: 9.5, color: color)),
+              ),
+            ],
+          ),
         ),
       ),
     );

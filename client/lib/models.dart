@@ -216,6 +216,7 @@ class GangInfo {
     required this.owned,
     required this.leader,
     required this.isMine,
+    required this.isLeader,
     required this.warName,
     required this.warUntil,
     required this.warScore,
@@ -244,6 +245,7 @@ class GangInfo {
   final int owned;
   final String leader;
   final bool isMine;
+  final bool isLeader;
   final String warName;
   final int warUntil;
   final int warScore;
@@ -272,6 +274,7 @@ class GangInfo {
         owned: asInt(j['owned']),
         leader: j['leader'] as String? ?? '',
         isMine: j['isMine'] as bool? ?? false,
+        isLeader: j['isLeader'] as bool? ?? false,
         warName: j['warName'] as String? ?? '',
         warUntil: asInt(j['warUntil']),
         warScore: asInt(j['warScore']),

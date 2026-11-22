@@ -373,9 +373,8 @@ class _MapScreenState extends State<MapScreen> {
             child: SafeArea(
               top: false,
               child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 18),
-                  child: Column(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -389,90 +388,84 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
+                    _ownerChip(t, mine: mine, ally: ally),
+                    const SizedBox(height: 8),
                     Text(t.fullName,
                         maxLines: 2,
                         style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 4),
-                    Text(
-                      mine
-                          ? 'Địa bàn của mày'
-                          : ally
-                              ? 'Đồng minh: ${t.ownerName}'
-                              : t.ownerName.isEmpty
-                                  ? 'Đất trống — không chủ'
-                                  : 'Chủ: ${t.ownerName}',
-                      style: labelStyle(
-                          size: 12,
-                          color: mine
-                              ? GH.pink
-                              : (ally ? GH.green : GH.muted)),
+                            fontSize: 20, fontWeight: FontWeight.w900)),
+                    if (t.contested) ...[
+                      const SizedBox(height: 10),
+                      NeonPanel(
+                        color: const Color(0xFF241C0E),
+                        borderColor: GH.gold,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.timer_rounded,
+                                size: 14, color: GH.gold),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                mine
+                                    ? 'ĐẤT CHƯA VỮNG · còn ${_clock(t.contestedUntil)} — chủ cũ đánh lại được, phòng thủ chỉ 60%'
+                                    : 'ĐANG TRANH CHẤP · còn ${_clock(t.contestedUntil)} — phòng thủ yếu, đánh lấy lại dễ hơn',
+                                style: const TextStyle(
+                                  color: GH.gold,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    NeonPanel(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 10),
+                      child: Row(
+                        children: [
+                          _statCell(
+                              'Bảo kê/lượt', '${formatMoney(t.tax)} đ', GH.gold),
+                          _statDivider(),
+                          _statCell('Cấp đất', '${t.level}/5', GH.cyan),
+                          _statDivider(),
+                          _statCell('Phòng thủ', '${t.defense}', GH.cyan),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 16),
-                    _row('Bảo kê mỗi lượt',
-                        '${formatMoney(t.tax)} đ', GH.gold),
-                    _row('Cấp địa bàn', '${t.level}/5', GH.cyan),
-                    _row('Phòng thủ', '${t.defense}', GH.cyan),
-                    _row('Lực của mày', '${s.power}', GH.pink),
                     if (garrison != null &&
                         (garrison.count > 0 ||
                             garrison.minions > 0 ||
                             garrison.general.isNotEmpty))
-                      _row(
-                        'Đang giữ',
-                        '${garrison.count} đàn em · ${garrison.minions} lính'
-                        '${garrison.general.isEmpty ? '' : ' · ★ ${garrison.general}'}',
-                        GH.cyan,
-                      ),
-                    if (t.contested)
                       Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          mine
-                              ? 'ĐẤT CHƯA VỮNG · còn ${_clock(t.contestedUntil)} — chủ cũ đánh lại được, phòng thủ chỉ 60%'
-                              : 'ĐANG TRANH CHẤP · còn ${_clock(t.contestedUntil)} — phòng thủ yếu, đánh lấy lại dễ hơn',
-                          style: const TextStyle(
-                            color: GH.gold,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                    NeonPanel(
-                      color: outmatched
-                          ? const Color(0xFF2A1218)
-                          : const Color(0xFF10241C),
-                      borderColor: outmatched ? GH.red : GH.green,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      child: Row(
-                        children: [
-                          Icon(
-                            outmatched
-                                ? Icons.warning_amber_rounded
-                                : Icons.trending_up_rounded,
-                            size: 16,
-                            color: outmatched ? GH.red : GH.green,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              outmatched
-                                  ? 'Lực mày yếu hơn phòng thủ. Kiếm thêm quân hoặc đồ trước đã.'
-                                  : 'Ngang cơ hoặc trội hơn. Ăn được.',
-                              style: TextStyle(
-                                color: outmatched ? GH.red : GH.green,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.shield_rounded,
+                                size: 13, color: GH.cyan),
+                            const SizedBox(width: 5),
+                            Expanded(
+                              child: Text(
+                                'Đang giữ: ${garrison.count} đàn em'
+                                ' · ${garrison.minions} lính'
+                                '${garrison.general.isEmpty ? '' : ' · ★ ${garrison.general}'}',
+                                style: labelStyle(size: 10.5, color: GH.cyan),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    if (city != null) _citySection(s, city, ctx, c),
+                    const SizedBox(height: 10),
+                    _powerCompare(s.power, t.defense, outmatched: outmatched),
+                    if (city != null) ...[
+                      const SizedBox(height: 12),
+                      _citySection(s, city, ctx, c),
+                    ],
                     const SizedBox(height: 16),
                     if (mine) ...[
                       PrimaryButton(
@@ -507,7 +500,6 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ),
             ),
-            ),
           );
         },
       ),
@@ -537,7 +529,7 @@ class _MapScreenState extends State<MapScreen> {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'THÀNH ${city.name.toUpperCase()}',
+                  'CÔNG TRÌNH TỈNH ${city.name.toUpperCase()}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -555,21 +547,21 @@ class _MapScreenState extends State<MapScreen> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'Giữ trọn ${city.total} ô của quận để mở công trình',
+                'Chưa giữ ô nào ở tỉnh này — chiếm 1 ô để mở công trình',
                 style: labelStyle(size: 10.5),
               ),
             )
           else ...[
-            if (city.goodsRate > 0 || city.incomeMul > 1 || city.defense > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  '+${city.goodsRate.round()} hàng/s'
-                  ' · +${((city.incomeMul - 1) * 100).round()}% thu nhập'
-                  ' · +${city.defense} thủ',
-                  style: labelStyle(size: 10.5, color: GH.cyan),
-                ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Của cả tỉnh, không riêng ô này'
+                '${city.goodsRate > 0 ? ' · +${city.goodsRate.round()} hàng/s' : ''}'
+                '${city.incomeMul > 1 ? ' · +${((city.incomeMul - 1) * 100).round()}% thu nhập' : ''}'
+                '${city.defense > 0 ? ' · +${city.defense} thủ' : ''}',
+                style: labelStyle(size: 10.5, color: GH.cyan),
               ),
+            ),
             const SizedBox(height: 8),
             for (final def in s.works) _workRow(s, city, def, sheetContext, c),
           ],
@@ -625,18 +617,165 @@ class _MapScreenState extends State<MapScreen> {
     return '${left ~/ 60}:${(left % 60).toString().padLeft(2, '0')}';
   }
 
-  Widget _row(String label, String value, Color color) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
+  Widget _ownerChip(Territory t, {required bool mine, required bool ally}) {
+    final key = territoryGroup(t);
+    final (Color fg, Color bg, String text) = mine
+        ? (GH.pink, GH.pink.withValues(alpha: 0.12), 'ĐỊA BÀN CỦA MÀY')
+        : ally
+            ? (GH.green, GH.green.withValues(alpha: 0.12),
+                'ĐỒNG MINH · ${t.ownerName.toUpperCase()}')
+            : t.ownerName.isEmpty
+                ? (GH.muted, GH.panel2, 'ĐẤT TRỐNG — KHÔNG CHỦ')
+                : (GH.gold, GH.gold.withValues(alpha: 0.10),
+                    'CHỦ: ${t.ownerName.toUpperCase()}');
+    return Container(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: bg,
+          border: Border.all(color: fg.withValues(alpha: 0.55), width: 2),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (key.isNotEmpty) ...[
+              PixelFlag(gangKey: key, size: 12),
+              const SizedBox(width: 5),
+            ],
+            Flexible(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: GH.pixelFont,
+                  color: fg,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statDivider() => Container(
+        width: 2,
+        height: 28,
+        color: GH.line,
+        margin: const EdgeInsets.symmetric(horizontal: 10),
+      );
+
+  Widget _statCell(String label, String value, Color color) {
+    return Expanded(
+      child: Column(
         children: [
-          Text(label, style: labelStyle(size: 12.5)),
-          const Spacer(),
-          Text(value,
-              style: TextStyle(
-                  color: color, fontSize: 13.5, fontWeight: FontWeight.w800)),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: GH.pixelFont,
+              color: color,
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(label.toUpperCase(), style: labelStyle(size: 8.5)),
         ],
       ),
+    );
+  }
+
+  Widget _powerCompare(int power, int defense, {required bool outmatched}) {
+    final peak = power > defense ? power : defense;
+    final color = outmatched ? GH.red : GH.green;
+    return NeonPanel(
+      color: outmatched ? const Color(0xFF2A1218) : const Color(0xFF10241C),
+      borderColor: color,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                outmatched
+                    ? Icons.warning_amber_rounded
+                    : Icons.trending_up_rounded,
+                size: 15,
+                color: color,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  outmatched
+                      ? 'THỦ Ô NÀY TRỘI HƠN — kiếm thêm quân hoặc đồ trước đã'
+                      : 'NGANG CƠ HOẶC TRỘI HƠN. Ăn được.',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _cmpBar('LỰC MÀY', power, peak, GH.pink),
+          const SizedBox(height: 4),
+          _cmpBar('PHÒNG THỦ', defense, peak, outmatched ? GH.red : GH.muted),
+        ],
+      ),
+    );
+  }
+
+  Widget _cmpBar(String label, int value, int peak, Color color) {
+    final frac = peak <= 0 ? 0.0 : (value / peak).clamp(0.04, 1.0);
+    return Row(
+      children: [
+        SizedBox(
+          width: 76,
+          child: Text(label, style: labelStyle(size: 9)),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Container(
+            height: 10,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0C0E14),
+              border: Border.all(color: GH.ink, width: 2),
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FractionallySizedBox(
+                widthFactor: frac,
+                child: Container(color: color),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        SizedBox(
+          width: 42,
+          child: Text(
+            '$value',
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontFamily: GH.pixelFont,
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

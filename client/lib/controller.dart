@@ -57,8 +57,8 @@ class GameController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> login(String name) async {
-    final token = await api.login(name);
+  Future<void> login(String username, String displayName) async {
+    final token = await api.login(username, displayName);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('token', token);
     state = await api.state();

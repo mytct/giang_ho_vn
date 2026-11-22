@@ -16,24 +16,26 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _name = TextEditingController();
+  final _username = TextEditingController();
+  final _displayName = TextEditingController();
   bool _loading = false;
 
   @override
   void dispose() {
-    _name.dispose();
+    _username.dispose();
+    _displayName.dispose();
     super.dispose();
   }
 
   Future<void> _enter() async {
-    final name = _name.text.trim();
-    if (name.length < 2) {
-      showToast(context, 'Tên gì ngắn vậy cha, ít nhất 2 ký tự', error: true);
+    final username = _username.text.trim();
+    if (username.length < 2) {
+      showToast(context, 'Username ít nhất 2 ký tự', error: true);
       return;
     }
     setState(() => _loading = true);
     try {
-      await widget.controller.login(name);
+      await widget.controller.login(username, _displayName.text.trim());
     } on ApiException catch (e) {
       if (mounted) showToast(context, e.message, error: true);
     } finally {
@@ -99,7 +101,32 @@ class _LoginScreenState extends State<LoginScreen> {
                     NeonPanel(
                       padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
                       child: TextField(
-                        controller: _name,
+                        controller: _username,
+                        maxLength: 20,
+                        textInputAction: TextInputAction.next,
+                        style: const TextStyle(
+                          color: GH.text,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        decoration: const InputDecoration(
+                          counterText: '',
+                          border: InputBorder.none,
+                          hintText: 'Username — đăng nhập lần sau...',
+                          hintStyle: TextStyle(color: GH.muted, fontSize: 15),
+                          prefixIcon: Icon(
+                            Icons.alternate_email_rounded,
+                            color: GH.cyan,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    NeonPanel(
+                      padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                      child: TextField(
+                        controller: _displayName,
                         maxLength: 20,
                         textInputAction: TextInputAction.done,
                         onSubmitted: (_) => _enter(),
@@ -111,11 +138,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         decoration: const InputDecoration(
                           counterText: '',
                           border: InputBorder.none,
-                          hintText: 'Tên giang hồ của mày...',
+                          hintText: 'Tên giang hồ (bỏ trống = username)',
                           hintStyle: TextStyle(color: GH.muted, fontSize: 15),
                           prefixIcon: Icon(
                             Icons.badge_rounded,
-                            color: GH.cyan,
+                            color: GH.gold,
                             size: 20,
                           ),
                         ),

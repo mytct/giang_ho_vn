@@ -18,7 +18,27 @@ class AlleyGame extends FlameGame {
   void setRate(double value) => rate = value;
 
   late final ui.Image bg;
-  ui.Image? atlas;
+
+  /// Pool atlas 4×4 nhân vật: p, e và 12 biến thể minion.
+  static const atlasPool = [
+    'atlas_p',
+    'atlas_e',
+    'atlas_m1',
+    'atlas_m2',
+    'atlas_m3',
+    'atlas_m4',
+    'atlas_m5',
+    'atlas_m6',
+    'atlas_m7',
+    'atlas_m8',
+    'atlas_m9',
+    'atlas_m10',
+    'atlas_m11',
+    'atlas_m12',
+  ];
+
+  /// Dàn nhân vật ở sân: mỗi lần vào app cast ngẫu nhiên (atlas + sắc độ).
+  final List<ui.Image> cast = [];
 
   /// Thứ tự ô trong atlas 4×4 (khớp FightFrames.slots).
   static const slots = [
@@ -46,9 +66,17 @@ class AlleyGame extends FlameGame {
   @override
   Future<void> onLoad() async {
     bg = await loadSceneImage('bg_alley');
-    try {
-      atlas = await loadFightFrame('atlas_p');
-    } catch (_) {}
+    final names = [...atlasPool]..shuffle();
+    for (final n in names.take(6)) {
+      try {
+        cast.add(await loadFightFrame(n));
+      } catch (_) {}
+    }
+    if (cast.isEmpty) {
+      try {
+        cast.add(await loadFightFrame('atlas_p'));
+      } catch (_) {}
+    }
     add(AlleyArt(this));
   }
 }
@@ -70,19 +98,63 @@ class _Coin {
 }
 
 class AlleyArt extends PositionComponent {
-  AlleyArt(this.game);
+  AlleyArt(this.game) {
+    // Mỗi lần mở app: cast, vị trí, dáng đứng, tốc độ đi đều ngẫu nhiên.
+    // Đàn em đứng YÊN: mỗi đứa đóng 1 pose idle ngẫu nhiên, không nhúc nhích.
+    final cast = game.cast;
+    for (var i = 0; i < _standSpots.length; i++) {
+      _crowd.add((
+        img: cast.isEmpty ? null : cast[i % cast.length],
+        tint: _randomTint(),
+        xJit: (_rnd.nextDouble() - 0.5) * 0.06,
+        hMul: 0.88 + _rnd.nextDouble() * 0.26,
+        frame: 'idle${1 + _rnd.nextInt(2)}',
+        flip: _rnd.nextBool(),
+      ));
+    }
+    _walker = (
+      img: cast.isEmpty ? null : cast[cast.length > 5 ? 5 : 0],
+      tint: _randomTint(),
+      speed: 0.035 + _rnd.nextDouble() * 0.03,
+      dir: _rnd.nextBool() ? 1 : -1,
+    );
+  }
 
   final AlleyGame game;
-  final math.Random _rnd = math.Random(11);
+  final math.Random _rnd = math.Random();
   final List<_Coin> _coins = [];
+  final List<({ui.Image? img, Color tint, double xJit, double hMul, String frame, bool flip})>
+      _crowd = [];
+  late ({ui.Image? img, Color tint, double speed, int dir}) _walker;
   double _t = 0;
   double _spawn = 0;
-  double _walkerX = 0.7;
+  double _walkDist = 0;
+  double _walkerX = _rnd2.nextDouble() * 1.1 - 0.05;
+
+  static final math.Random _rnd2 = math.Random();
+
+  /// Sắc độ áo quần ngẫu nhiên: wash màu nhẹ lên sprite để mỗi em một vẻ.
+  /// Trộn với trắng giữ alpha 1 — modulate nhân cả alpha, tint mờ trong
+  /// suốt là hư sprite.
+  static const _tints = [
+    Color(0xFFFF6D5A), // đỏ gạch
+    Color(0xFF5AC8FF), // xanh băng
+    Color(0xFF7DFF8A), // xanh lá
+    Color(0xFFFFD24A), // vàng kim
+    Color(0xFFC77DFF), // tím than
+    Color(0xFFFF9DE0), // hồng phấn
+  ];
+
+  Color _randomTint() =>
+      Color.lerp(const Color(0xFFFFFFFF), _tints[_rnd.nextInt(_tints.length)], 0.28)!;
 
   static const _standSpots = [
-    (0.15, 0.95, 210.0, 0.0),
-    (0.32, 0.94, 196.0, 1.3),
-    (0.55, 0.955, 222.0, 2.1),
+    (0.05, 0.945, 198.0),
+    (0.15, 0.95, 210.0),
+    (0.32, 0.94, 196.0),
+    (0.44, 0.935, 188.0),
+    (0.55, 0.955, 222.0),
+    (0.68, 0.945, 200.0),
   ];
 
   @override
@@ -98,9 +170,24 @@ class AlleyArt extends PositionComponent {
     if (size.x <= 0 || size.y <= 0) return;
     _t += dt;
     _spawn += dt;
-    _walkerX += dt * 0.045;
+    _walkerX += dt * _walker.speed * _walker.dir;
+    _walkDist += dt * _walker.speed; // đo quãng đường để khớp bước chân
     if (_walkerX > 1.08) {
-      _walkerX = -0.08; // đi hết hẻm rồi vào lại từ đầu, không bounce
+      _walkerX = 1.08;
+      _walker = (
+        img: _walker.img,
+        tint: _walker.tint,
+        speed: _walker.speed,
+        dir: -1,
+      );
+    } else if (_walkerX < -0.08) {
+      _walkerX = -0.08;
+      _walker = (
+        img: _walker.img,
+        tint: _walker.tint,
+        speed: _walker.speed,
+        dir: 1,
+      );
     }
     if (_spawn >= 0.8) {
       _spawn = 0;
@@ -171,43 +258,55 @@ class AlleyArt extends PositionComponent {
   }
 
   void _drawMinions(Canvas canvas, double w, double h) {
-    if (game.atlas == null) return;
-
-    for (final (fx, fy, fh, phase) in _standSpots) {
-      final idx = (((_t / 0.45) + phase) % 2).floor() + 1;
+    for (final (i, spot) in _standSpots.indexed) {
+      final c = _crowd[i];
+      final img = c.img;
+      if (img == null) continue;
       _drawSprite(
         canvas,
-        'idle$idx',
-        cx: w * fx,
-        footY: h * fy,
-        height: fh,
-        flip: phase > 1.5,
+        img,
+        c.frame,
+        cx: w * (spot.$1 + c.xJit),
+        footY: h * spot.$2,
+        height: spot.$3 * c.hMul,
+        flip: c.flip,
+        tint: c.tint,
       );
     }
 
-    final runIdx = (((_t / 0.12) % 4)).floor() + 1;
+    if (_walker.img == null) return;
+    // Bước chân theo quãng đường thực: ~30px một frame, hết trượt băng.
+    final stride = (30.0 * _walkDist * w).floor();
+    final runIdx = (stride % 4) + 1;
     _drawSprite(
       canvas,
+      _walker.img!,
       'run$runIdx',
       cx: w * _walkerX,
       footY: h * 0.99,
       height: 252,
-      flip: false,
+      flip: _walker.dir < 0,
+      tint: _walker.tint,
     );
   }
 
   void _drawSprite(
     Canvas canvas,
+    ui.Image atlas,
     String slot, {
     required double cx,
     required double footY,
     required double height,
     required bool flip,
+    Color? tint,
   }) {
-    final atlas = game.atlas;
     final idx = AlleyGame.slots.indexOf(slot);
-    if (atlas == null || idx < 0) return;
+    if (idx < 0) return;
     final cell = atlas.width / 4;
+    final paint = Paint()..filterQuality = FilterQuality.medium;
+    if (tint != null) {
+      paint.colorFilter = ColorFilter.mode(tint, BlendMode.modulate);
+    }
     canvas.save();
     canvas.translate(cx, footY);
     if (flip) canvas.scale(-1, 1);
@@ -215,7 +314,7 @@ class AlleyArt extends PositionComponent {
       atlas,
       Rect.fromLTWH((idx % 4) * cell, (idx ~/ 4) * cell, cell, cell),
       Rect.fromLTWH(-height / 2, -height, height, height),
-      Paint()..filterQuality = FilterQuality.medium,
+      paint,
     );
     canvas.restore();
   }

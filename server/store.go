@@ -16,7 +16,10 @@ import (
 const offlineCap = 8 * time.Hour
 
 type Player struct {
-	ID         string
+	ID string
+	// Username: tài khoản đăng nhập, duy nhất (so sánh không phân biệt hoa thường).
+	// Name: tên hiển thị trong game (bảng uy tín, chủ địa bàn...).
+	Username   string
 	Name       string
 	Money      int64
 	Uy         int64
@@ -614,17 +617,41 @@ func token() string {
 	return hex.EncodeToString(b)
 }
 
+// Login: tạo tài khoản theo tên (dùng trong test). Username = name.
 func (s *Store) Login(name string) (*Player, string, error) {
-	name = strings.TrimSpace(name)
-	if utf8.RuneCountInString(name) < 2 {
-		return nil, "", errors.New("tên phải từ 2 ký tự")
+	return s.LoginOrRegister(name, name)
+}
+
+// LoginOrRegister: username là tài khoản — đã có thì vào lại đúng nhân vật cũ,
+// chưa có thì tạo mới với tên hiển thị (mặc định = username).
+func (s *Store) LoginOrRegister(username, displayName string) (*Player, string, error) {
+	username = strings.ToLower(strings.TrimSpace(username))
+	if utf8.RuneCountInString(username) < 2 {
+		return nil, "", errors.New("username phải từ 2 ký tự")
 	}
-	if utf8.RuneCountInString(name) > 20 {
-		return nil, "", errors.New("tên tối đa 20 ký tự")
+	if utf8.RuneCountInString(username) > 20 {
+		return nil, "", errors.New("username tối đa 20 ký tự")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.players {
+		if p.Username == username {
+			t := token()
+			s.byToken[t] = p
+			return p, t, nil
+		}
+	}
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		displayName = username
+	}
+	if utf8.RuneCountInString(displayName) > 20 {
+		return nil, "", errors.New("tên hiển thị tối đa 20 ký tự")
 	}
 	p := &Player{
 		ID:            token(),
-		Name:          name,
+		Username:      username,
+		Name:          displayName,
 		Money:         500,
 		Goods:         30,
 		Uy:            0,
@@ -652,8 +679,6 @@ func (s *Store) Login(name string) (*Player, string, error) {
 		SeasonKey:     time.Now().In(ictZone).Format("2006-01"),
 		LastAccrual:   time.Now(),
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.players[p.ID] = p
 	t := token()
 	s.byToken[t] = p
@@ -1929,6 +1954,7 @@ type GangView struct {
 	Owned               int    `json:"owned"`
 	Leader              string `json:"leader"`
 	IsMine              bool   `json:"isMine"`
+	IsLeader            bool   `json:"isLeader"`
 	WarName             string `json:"warName"`
 	WarUntil            int64  `json:"warUntil"`
 	WarScore            int    `json:"warScore"`
@@ -2002,6 +2028,7 @@ func (s *Store) gangViewLocked(g *Gang, me *Player) GangView {
 		ID: g.ID, Name: g.Name, Flag: g.Flag, Members: len(g.Members),
 		MaxMembers: gangMaxMembers, Power: power, Owned: owned,
 		Leader: leaderName, IsMine: me != nil && me.GangID == g.ID,
+		IsLeader: me != nil && g.LeaderID == me.ID,
 		WarName: warName, WarUntil: warUntil.Unix(),
 		WarScore: g.WarScore, WarOpen: warWindowOpen(now),
 		Relation: relation, Wars: len(g.Wars), Allies: len(g.Allies),
@@ -3079,6 +3106,208 @@ func (s *Store) tickNPCsLocked(now time.Time) {
 			t.OwnerName = npcGangs[gid]
 			break
 		}
+	}
+	s.tickWorldLocked(now)
+}
+
+// tickWorldLocked: thế giới tự sống. Mỗi tick, các băng seeded (leader là
+// tài khoản demo) thỉnh thoảng tự chiếm đất, tuyên chiến, kết minh, bắt cống
+// và cắt quan hệ như người chơi thật. Băng do người chơi thật lập thì không.
+func (s *Store) tickWorldLocked(now time.Time) {
+	if mrand.Intn(100) >= 35 {
+		return
+	}
+	live := make([]*Gang, 0, len(s.gangs))
+	for _, g := range s.gangs {
+		if l := s.players[g.LeaderID]; l != nil && l.DevUnlimited {
+			live = append(live, g)
+		}
+	}
+	if len(live) < 2 {
+		return
+	}
+	for _, g := range live {
+		g.pruneRelations(now)
+	}
+	g := live[mrand.Intn(len(live))]
+
+	switch roll := mrand.Intn(12); {
+	case roll < 5:
+		s.worldAttackLocked(g, now)
+	case roll < 7:
+		s.worldWarLocked(g, live, now)
+	case roll < 9:
+		s.worldAllyLocked(g, live, now)
+	case roll < 11:
+		s.worldTributeLocked(g, live, now)
+	default:
+		s.worldBreakLocked(g, now)
+	}
+}
+
+func (s *Store) worldAttackLocked(g *Gang, now time.Time) {
+	candidates := make([]*Territory, 0, 32)
+	for _, t := range s.territories {
+		if t.OwnerID == "" {
+			continue
+		}
+		if strings.HasPrefix(t.OwnerID, "p:") {
+			owner, ok := s.players[strings.TrimPrefix(t.OwnerID, "p:")]
+			if !ok {
+				continue
+			}
+			if owner.GangID == g.ID || g.allied(now, owner.GangID) {
+				continue
+			}
+		}
+		candidates = append(candidates, t)
+	}
+	if len(candidates) == 0 {
+		return
+	}
+	t := candidates[mrand.Intn(len(candidates))]
+	atk := s.gangPowerLocked(g)
+	def := s.defenseOf(t)
+	if strings.HasPrefix(t.OwnerID, "p:") {
+		if victim, ok := s.players[strings.TrimPrefix(t.OwnerID, "p:")]; ok {
+			if vg := s.gangs[victim.GangID]; vg != nil {
+				def += s.gangPowerLocked(vg) / 8
+			}
+		}
+	}
+	if float64(atk) < float64(def)*1.5*(0.5+mrand.Float64()) {
+		return // đánh không xong, rút
+	}
+	prevName := t.OwnerName
+	if strings.HasPrefix(t.OwnerID, "p:") {
+		if victim, ok := s.players[strings.TrimPrefix(t.OwnerID, "p:")]; ok {
+			delete(victim.Owned, t.ID)
+			delete(victim.Guards, t.ID)
+			delete(victim.MinionGuards, t.ID)
+			delete(victim.GenGuards, t.ID)
+			s.recalcLandLocked(victim)
+			victim.addInbox(InboxMsg{
+				ID: token(), Kind: "attack", At: now.Unix(),
+				Text:         g.Name + " kéo quân chiếm " + t.Label() + " của mày",
+				FromName:     g.Name,
+				TerritoryID:  t.ID,
+				RevengeUntil: now.Add(30 * time.Minute).Unix(),
+			})
+		}
+	}
+	// Ô land vào tay một thành viên ngẫu nhiên của băng để mọi chỗ đếm đúng.
+	member := s.players[g.Members[mrand.Intn(len(g.Members))]]
+	if member == nil {
+		return
+	}
+	t.OwnerID = "p:" + member.ID
+	t.OwnerName = member.Name
+	member.Owned[t.ID] = true
+	s.recalcLandLocked(member)
+	g.logLocked(fmt.Sprintf("Băng chiếm %s của %s", t.Label(), prevName))
+}
+
+func (s *Store) worldWarLocked(g *Gang, live []*Gang, now time.Time) {
+	if len(g.Wars) > 0 || now.Before(g.WarCooldownUntil) {
+		return
+	}
+	targets := make([]*Gang, 0, len(live))
+	for _, o := range live {
+		if o.ID == g.ID || g.allied(now, o.ID) || g.atWar(now, o.ID) ||
+			o.TributeTo == g.ID || g.TributeTo == o.ID {
+			continue
+		}
+		targets = append(targets, o)
+	}
+	if len(targets) == 0 {
+		return
+	}
+	t := targets[mrand.Intn(len(targets))]
+	until := now.Add(30 * time.Minute)
+	g.Wars[t.ID] = until
+	t.Wars[g.ID] = until
+	g.logLocked(fmt.Sprintf("Tuyên chiến với %s (30 phút)", t.Name))
+	t.logLocked(fmt.Sprintf("%s tuyên chiến, cầm vũ khí!", g.Name))
+}
+
+func (s *Store) worldAllyLocked(g *Gang, live []*Gang, now time.Time) {
+	if len(g.Allies) >= 2 {
+		return
+	}
+	targets := make([]*Gang, 0, len(live))
+	for _, o := range live {
+		if o.ID == g.ID || len(o.Allies) >= 2 || g.allied(now, o.ID) ||
+			g.atWar(now, o.ID) || o.TributeTo == g.ID || g.TributeTo == o.ID {
+			continue
+		}
+		targets = append(targets, o)
+	}
+	if len(targets) == 0 {
+		return
+	}
+	o := targets[mrand.Intn(len(targets))]
+	until := now.Add(7 * 24 * time.Hour)
+	g.Allies[o.ID] = until
+	o.Allies[g.ID] = until
+	g.logLocked(fmt.Sprintf("Kết liên minh với %s (7 ngày)", o.Name))
+	o.logLocked(fmt.Sprintf("Kết liên minh với %s (7 ngày)", g.Name))
+}
+
+func (s *Store) worldTributeLocked(g *Gang, live []*Gang, now time.Time) {
+	if g.TributeTo != "" {
+		return
+	}
+	tributaries := 0
+	for _, o := range s.gangs {
+		if o.TributeTo == g.ID {
+			tributaries++
+		}
+	}
+	if tributaries >= 2 {
+		return
+	}
+	for _, o := range live {
+		if o.ID == g.ID || o.TributeTo != "" || g.allied(now, o.ID) ||
+			g.atWar(now, o.ID) {
+			continue
+		}
+		if s.gangPowerLocked(g) < s.gangPowerLocked(o)*5/4 {
+			continue // chưa đủ mạnh để bắt cống
+		}
+		o.TributeTo = g.ID
+		g.logLocked(fmt.Sprintf("Bắt %s nộp cống 10%% thu nhập", o.Name))
+		o.logLocked(fmt.Sprintf("Bị %s bắt nộp cống 10%% thu nhập", g.Name))
+		for _, id := range o.Members {
+			if m := s.players[id]; m != nil {
+				m.addInbox(InboxMsg{
+					ID: token(), Kind: "gang", At: now.Unix(),
+					Text: fmt.Sprintf("%s bắt băng mày nộp cống 10%% thu nhập", g.Name),
+				})
+			}
+		}
+		return
+	}
+}
+
+func (s *Store) worldBreakLocked(g *Gang, now time.Time) {
+	if g.TributeTo != "" {
+		protector := s.gangs[g.TributeTo]
+		g.TributeTo = ""
+		if protector != nil {
+			protector.logLocked(g.Name + " cắt cống nộp")
+		}
+		g.logLocked("Cắt cống nộp" + map[bool]string{true: " cho " + protector.Name, false: ""}[protector != nil])
+		return
+	}
+	for id := range g.Allies {
+		o := s.gangs[id]
+		delete(g.Allies, id)
+		if o != nil {
+			delete(o.Allies, g.ID)
+			o.logLocked(g.Name + " cắt liên minh")
+			g.logLocked("Cắt liên minh với " + o.Name)
+		}
+		return
 	}
 }
 

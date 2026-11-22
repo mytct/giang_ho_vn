@@ -150,13 +150,18 @@ func registerRoutes(mux *http.ServeMux, st *Store) {
 
 	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Name string `json:"name"`
+			Username string `json:"username"`
+			Name     string `json:"name"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			fail(w, 400, "dữ liệu không hợp lệ")
 			return
 		}
-		_, tok, err := st.Login(body.Name)
+		// Tương thích client cũ: chỉ gửi name thì name cũng là username.
+		if body.Username == "" {
+			body.Username = body.Name
+		}
+		_, tok, err := st.LoginOrRegister(body.Username, body.Name)
 		if err != nil {
 			fail(w, 400, err.Error())
 			return

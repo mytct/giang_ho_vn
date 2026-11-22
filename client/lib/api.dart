@@ -85,8 +85,13 @@ class ApiClient {
     return token!;
   }
 
-  Future<String> login(String name) async {
-    final data = await _send('POST', '/api/login', body: {'name': name});
+  /// Đăng nhập bằng username: đã có tài khoản thì vào lại đúng nhân vật cũ,
+  /// chưa có thì tạo mới (name = tên hiển thị, trống thì lấy username).
+  Future<String> login(String username, String name) async {
+    final data = await _send('POST', '/api/login', body: {
+      'username': username,
+      'name': name,
+    });
     token = data['token'] as String;
     return token!;
   }

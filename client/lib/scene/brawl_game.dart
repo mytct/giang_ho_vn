@@ -112,6 +112,10 @@ class BrawlGame extends FlameGame {
         'bg_fight_phelieu',
         'bg_fight_chora',
         'bg_fight_bentau',
+        'bg_fight_alley',
+        'bg_fight_benxe',
+        'bg_fight_karaoke',
+        'bg_fight_market',
       ];
       bg = await loadSceneImage(bgs[_variantRnd.nextInt(bgs.length)]);
     } catch (_) {}
